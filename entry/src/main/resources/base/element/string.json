@@ -1,0 +1,28 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "module description"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "description"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "label"
+    },
+    {
+      "name": "location_reason",
+      "value": "用户获取精准位置信息"
+    },
+    {
+      "name": "full_page",
+      "value": "100%"
+    },
+    {
+      "name": "app_name",
+      "value": "WhereToMeet"
+    }
+  ]
+}
