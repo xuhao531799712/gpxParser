@@ -1,6 +1,6 @@
 import { map, mapCommon, MapComponent } from '@kit.MapKit';
 import { AsyncCallback } from '@kit.BasicServicesKit';
-import { promptAction } from '@kit.ArkUI';
+import { display, promptAction } from '@kit.ArkUI';
 import { abilityAccessCtrl, Permissions } from '@kit.AbilityKit';
 import { PermissionsUtil } from '../common/utils/PermissionsUtil';
 import { LocationUtil } from '../common/utils/LocationUtil';
@@ -31,6 +31,8 @@ struct Index {
   private endMarker: map.Marker | undefined = undefined;
   private tapMarker: map.Marker | undefined = undefined;
   private gpxReaded: boolean = false
+  private chartOpts : Partial<ChartOptions> | undefined = undefined
+
 
   build() {
     Stack({ alignContent: Alignment.TopEnd }) {
@@ -43,16 +45,11 @@ struct Index {
           .width($r('app.string.full_page'))
           .height($r('app.string.map_ratio'))
 
-        Row() {
-          ELEChart({chart: this.chart, onReady: ()=> {
-            this.parseElePoints()
-          }, onTap: async (index)=> {
-            await this.addTapMarker(index)
-          }})
-        }
-        .width($r('app.string.full_page'))
-        .height($r('app.string.chart_ratio'))
-        .alignItems(VerticalAlign.Center)
+        ELEChart({chart: this.chart, chartHeight: this.getScreenHeight() * 0.15, onReady: ()=> {
+          this.parseElePoints()
+        }, onTap: async (index)=> {
+          await this.addTapMarker(index)
+        }, getChartOpt: () => {return this.chartOpts}})
       }
 
       Image(this.avatarUri.length > 0 ? this.avatarUri : $r('app.media.user'))
@@ -243,12 +240,12 @@ struct Index {
     let cumuls: Array<string> = this.gpxParser.tracks[0].distance.cumul.map(
       cumul => (cumul / 1000.0).toFixed(2)
     );
-    let opts: Partial<ChartOptions> = {
+    this.chartOpts = {
       type: "area",
       categories: cumuls,
       series: [
         {
-          name: "海拔", // 必须配置
+          name: "", // 必须配置，隐藏海拔名称
           data: eles,
           legendShape: 'none'
         }
@@ -274,12 +271,13 @@ struct Index {
           type: 'dash'
         },
         tooltip: {
+          showBox: false,
           xAxisLabel: true,
           yAxisLabel: true
         }
       }
     }
-    this.chart.updateData(opts)
+    this.chart.updateData(this.chartOpts)
   }
 
   async addTapMarker(index: number) {
@@ -337,6 +335,17 @@ struct Index {
     if (this.endMarker) {
       this.endMarker.remove();
       this.endMarker = undefined;
+    }
+  }
+
+  private getScreenHeight(): number {
+    try {
+      const displayInfo = display.getDefaultDisplaySync();
+      return px2vp(displayInfo.height); // 原始为像素，转为虚拟像素
+    } catch (error) {
+      console.error('获取屏幕高度失败:', error);
+      // 设置默认高度（例如1280px）
+      return 1280
     }
   }
 }
