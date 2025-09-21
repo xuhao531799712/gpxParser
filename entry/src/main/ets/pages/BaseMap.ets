@@ -9,6 +9,8 @@ import { buffer, JSON, util } from '@kit.ArkTS';
 import { fileIo } from '@kit.CoreFileKit';
 import GPXParser from '../common/parser/GPXParser';
 import { Point } from '../common/parser/GPXTypes';
+import { ELEChart } from './ELEChart';
+import { ChartOptions, UChartsController } from '@ibestservices/ucharts';
 
 PersistentStorage.persistProp('avatarUris', '');
 
@@ -17,6 +19,7 @@ PersistentStorage.persistProp('avatarUris', '');
 struct Index {
   @State mapController?: map.MapComponentController = undefined
   @StorageLink('avatarUris') avatarUri: string = ''
+  @State chart: UChartsController = new UChartsController();
   private gpxFileUrl: string = '33'
   private mapOption?: mapCommon.MapOptions
   private callback?: AsyncCallback<map.MapComponentController>
@@ -26,18 +29,30 @@ struct Index {
   private polyline: map.MapPolyline | undefined = undefined;
   private startMarker: map.Marker | undefined = undefined;
   private endMarker: map.Marker | undefined = undefined;
+  private tapMarker: map.Marker | undefined = undefined;
+  private gpxReaded: boolean = false
 
   build() {
     Stack({ alignContent: Alignment.TopEnd }) {
-      Stack({ alignContent: Alignment.Bottom }) {
+      Column() {
         // 构造MapComponent
         MapComponent({
           mapOptions: this.mapOption,
           mapCallback: this.callback
         })
           .width($r('app.string.full_page'))
-          .height($r('app.string.full_page'))
-          .offset({ y: -56 })
+          .height($r('app.string.map_ratio'))
+
+        Row() {
+          ELEChart({chart: this.chart, onReady: ()=> {
+            this.parseElePoints()
+          }, onTap: async (index)=> {
+            await this.addTapMarker(index)
+          }})
+        }
+        .width($r('app.string.full_page'))
+        .height($r('app.string.chart_ratio'))
+        .alignItems(VerticalAlign.Center)
       }
 
       Image(this.avatarUri.length > 0 ? this.avatarUri : $r('app.media.user'))
@@ -144,48 +159,10 @@ struct Index {
       let buf = buffer.from(arrayBuffer, 0, result).toString();
       this.gpxParser.parse(buf, async (err) => {
         if (err == undefined) {
-          // 解析成功，可从parser中取对应的数据
-          let points: Array<mapCommon.LatLng> = this.gpxParser.tracks[0].segments[0].map(
-            point => this.convertToLatLng(point)
-          );
-
-          let polylineOption: mapCommon.MapPolylineOptions = {
-            // 折线坐标点，必传
-            points: points,
-            clickable: false,
-            color: 0xff000080, // 海军蓝
-            startCap: mapCommon.CapStyle.ROUND,
-            endCap: mapCommon.CapStyle.ROUND,
-            geodesic: false,
-            jointType: mapCommon.JointType.DEFAULT,
-            visible: true,
-            width: 15,
-            zIndex: 0,
-            gradient: false
-          };
-          // 3. 添加起点标记
-          let startMarkerOptions: mapCommon.MarkerOptions = {
-            position: points[0],
-            title: '起点',
-            snippet: '行程开始位置',
-            icon: this.createCustomMarkerIcon(true), // 绿色图标
-          };
-          this.startMarker = await this.mapController?.addMarker(startMarkerOptions);
-
-          // 4. 添加终点标记
-          const endMarkerOptions: mapCommon.MarkerOptions = {
-            position: points[points.length - 1],
-            title: '终点',
-            snippet: '行程结束位置',
-            icon: this.createCustomMarkerIcon(false), // 红色图标
-          };
-          this.endMarker = await this.mapController?.addMarker(endMarkerOptions);
-          try {
-            this.polyline = await this.mapController?.addPolyline(polylineOption)
-            this.zoomToTrackWithPadding()
-          } catch (err) {
-            console.error("addPolyline failed with error message: " + err.message);
-          }
+          // 解析成功，可从parser中取对应的坐标数据
+          this.gpxReaded = true
+          await this.parseLatLngPoints()
+          this.parseElePoints()
         } else {
           console.error("readGPX failed with error message: " + err.message);
         }
@@ -204,8 +181,127 @@ struct Index {
     return gcj02Posion;
   }
 
-  createCustomMarkerIcon(start: boolean): Resource {
-    if (start) {
+  private async parseLatLngPoints() {
+    const allPoints: Point[] = [];
+    this.gpxParser.tracks[0].segments.forEach(segment => {
+      allPoints.push(...segment);
+    });
+    let points: Array<mapCommon.LatLng> = allPoints.map(
+      point => this.convertToLatLng(point)
+    );
+
+    let polylineOption: mapCommon.MapPolylineOptions = {
+      // 折线坐标点，必传
+      points: points,
+      clickable: false,
+      color: 0xff000080, // 海军蓝
+      startCap: mapCommon.CapStyle.ROUND,
+      endCap: mapCommon.CapStyle.ROUND,
+      geodesic: false,
+      jointType: mapCommon.JointType.DEFAULT,
+      visible: true,
+      width: 15,
+      zIndex: 0,
+      gradient: false
+    };
+    // 3. 添加起点标记
+    let startMarkerOptions: mapCommon.MarkerOptions = {
+      position: points[0],
+      title: '起点',
+      snippet: '行程开始位置',
+      icon: this.createCustomMarkerIcon(true), // 绿色图标
+    };
+    this.startMarker = await this.mapController?.addMarker(startMarkerOptions);
+
+    // 4. 添加终点标记
+    const endMarkerOptions: mapCommon.MarkerOptions = {
+      position: points[points.length - 1],
+      title: '终点',
+      snippet: '行程结束位置',
+      icon: this.createCustomMarkerIcon(false), // 红色图标
+    };
+    this.endMarker = await this.mapController?.addMarker(endMarkerOptions);
+    try {
+      this.polyline = await this.mapController?.addPolyline(polylineOption)
+      this.zoomToTrackWithPadding()
+    } catch (err) {
+      console.error("addPolyline failed with error message: " + err.message);
+    }
+  }
+
+  parseElePoints() {
+    if (this.gpxReaded != true) return
+    // 海拔数据
+    const allPoints: Point[] = [];
+    this.gpxParser.tracks[0].segments.forEach(segment => {
+      allPoints.push(...segment);
+    });
+    let eles: Array<number> = allPoints.map(
+      point => point.ele
+    );
+    // 单位米，需要/1000换算为km
+    let cumuls: Array<string> = this.gpxParser.tracks[0].distance.cumul.map(
+      cumul => (cumul / 1000.0).toFixed(2)
+    );
+    let opts: Partial<ChartOptions> = {
+      type: "area",
+      categories: cumuls,
+      series: [
+        {
+          name: "海拔", // 必须配置
+          data: eles,
+          legendShape: 'none'
+        }
+      ],
+      // enableScroll: true,
+      padding: [5,5,0,5],
+      xAxis: {
+        disabled: true,
+        // labelCount: 5, // 限制展示的X标数量，当放缩时可以显示被隐藏的
+      },
+      yAxis: {
+        gridType: 'dash',
+        dashLength: 2
+      },
+      dataLabel: false,
+      extra: {
+        area: {
+          activeType: 'hollow',
+          type: 'curve',
+          opacity: 1
+        },
+        markLine: {
+          type: 'dash'
+        },
+        tooltip: {
+          xAxisLabel: true,
+          yAxisLabel: true
+        }
+      }
+    }
+    this.chart.updateData(opts)
+  }
+
+  async addTapMarker(index: number) {
+    let points = this.polyline?.getPoints()
+    if (points == undefined) return
+    if (this.tapMarker == undefined) {
+      let tapMarkerOptions: mapCommon.MarkerOptions = {
+        position: points[index],
+        title: '起点',
+        snippet: '行程开始位置',
+        icon: this.createCustomMarkerIcon(undefined), // 绿色图标
+      };
+      this.tapMarker = await this.mapController?.addMarker(tapMarkerOptions);
+    } else {
+      this.tapMarker.setPosition(points[index])
+    }
+  }
+
+  createCustomMarkerIcon(start: boolean | undefined): Resource {
+    if (start == undefined) {
+      return $r('app.media.icon_mark');
+    } else if (start == true) {
       return $r('app.media.icon_start');
     } else {
       return $r('app.media.icon_end');

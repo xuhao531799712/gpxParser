@@ -2,6 +2,7 @@
   "src": [
     "pages/Index",
     "pages/Test",
-    "pages/BaseMap"
+    "pages/BaseMap",
+    "pages/ELEChart"
   ]
 }
