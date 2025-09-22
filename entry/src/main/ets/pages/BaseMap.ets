@@ -11,6 +11,7 @@ import GPXParser from '../common/parser/GPXParser';
 import { Point } from '../common/parser/GPXTypes';
 import { ELEChart } from './ELEChart';
 import { ChartOptions, UChartsController } from '@ibestservices/ucharts';
+import {UISlider} from '@hw-agconnect/ui-slider'
 
 PersistentStorage.persistProp('avatarUris', '');
 
@@ -20,6 +21,7 @@ struct Index {
   @State mapController?: map.MapComponentController = undefined
   @StorageLink('avatarUris') avatarUri: string = ''
   @State chart: UChartsController = new UChartsController();
+  @State showSlider: boolean = false
   private gpxFileUrl: string = '33'
   private mapOption?: mapCommon.MapOptions
   private callback?: AsyncCallback<map.MapComponentController>
@@ -32,18 +34,58 @@ struct Index {
   private tapMarker: map.Marker | undefined = undefined;
   private gpxReaded: boolean = false
   private chartOpts : Partial<ChartOptions> | undefined = undefined
-
+  private sliderValue: [number, number] = [0, 100]
 
   build() {
     Stack({ alignContent: Alignment.TopEnd }) {
       Column() {
-        // 构造MapComponent
-        MapComponent({
-          mapOptions: this.mapOption,
-          mapCallback: this.callback
-        })
-          .width($r('app.string.full_page'))
-          .height($r('app.string.map_ratio'))
+        Stack({ alignContent: Alignment.Bottom }) {
+          // 构造MapComponent
+          MapComponent({
+            mapOptions: this.mapOption,
+            mapCallback: this.callback
+          })
+            .width($r('app.string.full_page'))
+            .height($r('app.string.map_ratio'))
+
+          if (this.showSlider) {
+            Column() {
+              Row() {
+                Button("取消", {type: ButtonType.Normal})
+                .width('15%')
+                .onClick( ()=> {
+                  this.showSlider = false
+                  this.recoverStartEndMarkers()
+                })
+
+                UISlider({
+                  value: [0, 100],
+                  style: SliderStyle.OutSet,
+                  showTip: true,
+                  onChange: (value) => {
+                    if (Array.isArray(value)) {
+                      this.moveStartEndMarkers(value)
+                      console.debug("xuuuuuuuuu " + value.toString());
+                    }
+                  }
+                })
+                  .width('65%')
+
+                Button("确认", {type: ButtonType.Normal})
+                .width('15%')
+                .onClick( ()=> {
+                  this.saveSliderChange()
+                  this.showSlider = false
+                })
+              }
+              .backgroundColor(Color.White)
+              .width('100%')
+              .justifyContent(FlexAlign.SpaceBetween)
+
+              Divider()
+            }
+          }
+        }
 
         ELEChart({chart: this.chart, chartHeight: this.getScreenHeight() * 0.15, onReady: ()=> {
           this.parseElePoints()
@@ -52,14 +94,47 @@ struct Index {
         }, getChartOpt: () => {return this.chartOpts}})
       }
 
-      Image(this.avatarUri.length > 0 ? this.avatarUri : $r('app.media.user'))
-        .width(64)
-        .height(64)
-        .borderRadius(32)
-        .margin({ top: 16, right: 16 })
-        .onClick(async () => {
-          await this.getAvatarAndNickName()
-        })
+      Column() {
+        Image(this.avatarUri.length > 0 ? this.avatarUri : $r('app.media.user'))
+          .width(64)
+          .height(64)
+          .borderRadius(32)
+          .margin({ top: 16, right: 16 })
+          .onClick(async () => {
+            await this.getAvatarAndNickName()
+          })
+
+        Image($r('app.media.icon_reverse'))
+          .width(48)
+          .height(48)
+          .margin({ top: 8, right: 16 })
+          .enabled(!this.showSlider)
+          .onClick(() => {
+            if (this.showSlider) return
+            this.gpxParser.revertTrackPoints(this.gpxParser.tracks[0])
+            this.parseLatLngPoints()
+            this.parseElePoints()
+            })
+
+        Image($r('app.media.icon_cut'))
+          .width(48)
+          .height(48)
+          .margin({ top: 8, right: 16 })
+          .onClick(() => {
+            this.showSlider = true
+            // todo: 同时禁止其他编辑功能使用
+          })
+
+        Image($r('app.media.icon_mark_point'))
+          .width(48)
+          .height(48)
+          .margin({ top: 8, right: 16 })
+          .onClick(() => {
+            this.gpxParser.revertTrackPoints(this.gpxParser.tracks[0])
+            this.parseLatLngPoints()
+            this.parseElePoints()
+          })
+      }
     }
     .width($r('app.string.full_page'))
     .height($r('app.string.full_page'))
@@ -179,6 +254,10 @@ struct Index {
   }
 
   private async parseLatLngPoints() {
+    // 首次进入地图或者编辑路书保存后调用本接口更新地图标点和标线
+    this.clearMarkers()
+    this.clearPolyLine()
+
     const allPoints: Point[] = [];
     this.gpxParser.tracks[0].segments.forEach(segment => {
       allPoints.push(...segment);
@@ -300,9 +379,9 @@ struct Index {
     if (start == undefined) {
       return $r('app.media.icon_mark');
     } else if (start == true) {
-      return $r('app.media.icon_start');
+      return $r("app.media.icon_start");
     } else {
-      return $r('app.media.icon_end');
+      return $r("app.media.icon_end");
     }
   }
 
@@ -326,6 +405,37 @@ struct Index {
     this.mapController.moveCamera(map.newLatLngBounds(bounds, 100))
   }
 
+  moveStartEndMarkers(value: [number, number]) {
+    this.sliderValue = value
+    let startValue = value[0] / 100.0
+    let endValue = value[1] / 100.0
+    let points = this.polyline!.getPoints()
+    let newStartPoint = points[Math.round(points.length * startValue)]
+    let newEndPoint = points[Math.round(points.length * endValue)]
+    this.startMarker?.setPosition(newStartPoint)
+    this.endMarker?.setPosition(newEndPoint)
+  }
+
+  recoverStartEndMarkers() {
+    this.sliderValue = [0, 100]
+    let points = this.polyline!.getPoints()
+    this.startMarker?.setPosition(points[0])
+    this.endMarker?.setPosition(points[points.length - 1])
+  }
+
+  saveSliderChange() {
+    let startValue = this.sliderValue[0] / 100.0
+    let endValue = this.sliderValue[1] / 100.0
+    let length = this.gpxParser.tracks[0].segments[0].length
+    let from = Math.round(length * startValue)
+    let to = Math.round(length * endValue)
+    this.gpxParser.trimTrackPoints(this.gpxParser.tracks[0], from, to)
+
+    this.parseLatLngPoints()
+    this.parseElePoints()
+    this.sliderValue = [0, 100]
+  }
+
   // 清除所有标记
   clearMarkers() {
     if (this.startMarker) {
@@ -335,6 +445,18 @@ struct Index {
     if (this.endMarker) {
       this.endMarker.remove();
       this.endMarker = undefined;
+    }
+    if (this.tapMarker) {
+      this.tapMarker.remove();
+      this.tapMarker = undefined;
+    }
+  }
+
+  // 清除所有标记
+  clearPolyLine() {
+    if (this.polyline) {
+      this.polyline.remove();
+      this.polyline = undefined;
     }
   }
 

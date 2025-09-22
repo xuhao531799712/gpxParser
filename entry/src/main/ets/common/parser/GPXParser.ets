@@ -551,6 +551,34 @@ export default class GPXParser {
   }
 
   /**
+   * 翻转Track上轨迹点方向
+   * @param track - 轨道对象
+   */
+  revertTrackPoints(track: Track) {
+    if (track.segments.length === 0) return;
+
+    for (let n = 0; n < track.segments.length; n++) {
+      track.segments[n] = track.segments[n].reverse()
+    }
+    this.calculateTrackData(track)
+  }
+
+  /**
+   * 百分比区间裁剪Track上的轨迹点
+   * @param track - 轨道对象
+   * @param from - 起始百分比
+   * @param to - 终止百分比
+   */
+  trimTrackPoints(track: Track, from: number, to: number) {
+    if (track.segments.length === 0) return;
+
+    for (let n = 0; n < track.segments.length; n++) {
+      track.segments[n] = track.segments[n].slice(from, to)
+    }
+    this.calculateTrackData(track)
+  }
+
+  /**
    * 转换为GeoJSON格式
    * @returns GeoJSON对象
    */

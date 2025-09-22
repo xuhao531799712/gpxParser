@@ -2,7 +2,8 @@
   "modelVersion": "5.0.5",
   "description": "Please describe the basic information.",
   "dependencies": {
-    "@ibestservices/ucharts": "^1.0.9"
+    "@ibestservices/ucharts": "^1.0.9",
+    "@hw-agconnect/ui-slider": "^1.0.2"
   },
   "devDependencies": {
     "@ohos/hypium": "1.0.21",
