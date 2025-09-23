@@ -12,8 +12,16 @@ import { Point } from '../common/parser/GPXTypes';
 import { ELEChart } from './ELEChart';
 import { ChartOptions, UChartsController } from '@ibestservices/ucharts';
 import {UISlider} from '@hw-agconnect/ui-slider'
+import { trustedAppService } from '@kit.DeviceSecurityKit';
 
 PersistentStorage.persistProp('avatarUris', '');
+
+enum MarkType {
+  Start, // 起点
+  End, // 终点
+  WayPoint, // 兴趣点
+  Normal // 普通
+}
 
 @Entry
 @Component
@@ -32,6 +40,7 @@ struct Index {
   private startMarker: map.Marker | undefined = undefined;
   private endMarker: map.Marker | undefined = undefined;
   private tapMarker: map.Marker | undefined = undefined;
+  private waypointMarkers: map.Marker[] = [];
   private gpxReaded: boolean = false
   private chartOpts : Partial<ChartOptions> | undefined = undefined
   private sliderValue: [number, number] = [0, 100]
@@ -130,9 +139,11 @@ struct Index {
           .height(48)
           .margin({ top: 8, right: 16 })
           .onClick(() => {
-            this.gpxParser.revertTrackPoints(this.gpxParser.tracks[0])
-            this.parseLatLngPoints()
-            this.parseElePoints()
+            if (this.waypointMarkers.length > 0) {
+              this.clearWayPointMarkers()
+            } else {
+              this.addWayPointMarkers()
+            }
           })
       }
     }
@@ -285,7 +296,7 @@ struct Index {
       position: points[0],
       title: '起点',
       snippet: '行程开始位置',
-      icon: this.createCustomMarkerIcon(true), // 绿色图标
+      icon: this.createCustomMarkerIcon(MarkType.Start), // 绿色图标
     };
     this.startMarker = await this.mapController?.addMarker(startMarkerOptions);
 
@@ -294,7 +305,7 @@ struct Index {
       position: points[points.length - 1],
       title: '终点',
       snippet: '行程结束位置',
-      icon: this.createCustomMarkerIcon(false), // 红色图标
+      icon: this.createCustomMarkerIcon(MarkType.End), // 红色图标
     };
     this.endMarker = await this.mapController?.addMarker(endMarkerOptions);
     try {
@@ -367,7 +378,7 @@ struct Index {
         position: points[index],
         title: '起点',
         snippet: '行程开始位置',
-        icon: this.createCustomMarkerIcon(undefined), // 绿色图标
+        icon: this.createCustomMarkerIcon(MarkType.Normal), // 绿色图标
       };
       this.tapMarker = await this.mapController?.addMarker(tapMarkerOptions);
     } else {
@@ -375,13 +386,16 @@ struct Index {
     }
   }
 
-  createCustomMarkerIcon(start: boolean | undefined): Resource {
-    if (start == undefined) {
-      return $r('app.media.icon_mark');
-    } else if (start == true) {
-      return $r("app.media.icon_start");
-    } else {
-      return $r("app.media.icon_end");
+  createCustomMarkerIcon(type: MarkType): Resource {
+    switch (type) {
+      case MarkType.Start:
+        return $r("app.media.icon_start");
+      case MarkType.End:
+        return $r("app.media.icon_end");
+      case MarkType.WayPoint:
+        return $r("app.media.icon_waypoint");
+      case MarkType.Normal:
+        return $r('app.media.icon_mark');
     }
   }
 
@@ -421,6 +435,29 @@ struct Index {
     let points = this.polyline!.getPoints()
     this.startMarker?.setPosition(points[0])
     this.endMarker?.setPosition(points[points.length - 1])
+  }
+
+  async addWayPointMarkers() {
+    let points: Array<mapCommon.LatLng> = this.gpxParser.waypoints.map(
+      point => this.convertToLatLng(point)
+    );
+    for (let i = 0; i < points.length; i++) {
+      let markerOptions: mapCommon.MarkerOptions = {
+        position: points[i],
+        title: this.gpxParser.waypoints[i].name,
+        snippet: this.gpxParser.waypoints[i].desc,
+        icon: this.createCustomMarkerIcon(MarkType.WayPoint), // 绿色图标
+        clickable: true
+      };
+      this.waypointMarkers.push(await this.mapController!.addMarker(markerOptions));
+    }
+  }
+
+  clearWayPointMarkers() {
+    this.waypointMarkers.forEach((marker)=> {
+      marker.remove()
+    })
+    this.waypointMarkers = []
   }
 
   saveSliderChange() {
