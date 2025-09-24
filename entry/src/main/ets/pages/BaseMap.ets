@@ -8,11 +8,12 @@ import { authentication } from '@kit.AccountKit';
 import { buffer, JSON, util } from '@kit.ArkTS';
 import { fileIo } from '@kit.CoreFileKit';
 import GPXParser from '../common/parser/GPXParser';
-import { Point } from '../common/parser/GPXTypes';
+import { Point, Waypoint } from '../common/parser/GPXTypes';
 import { ELEChart } from './ELEChart';
 import { ChartOptions, UChartsController } from '@ibestservices/ucharts';
 import {UISlider} from '@hw-agconnect/ui-slider'
-import { trustedAppService } from '@kit.DeviceSecurityKit';
+import { gcj02_to_wgs84 } from '../common/utils/CoordinateUtil';
+import { ElevationService } from '../common/utils/ElevationService';
 
 PersistentStorage.persistProp('avatarUris', '');
 
@@ -21,6 +22,13 @@ enum MarkType {
   End, // 终点
   WayPoint, // 兴趣点
   Normal // 普通
+}
+
+class MarkerWindowData {
+  title: string | undefined = undefined
+  des: string | undefined = undefined
+  latitude: string | undefined = undefined // 纬度
+  longitude: string | undefined = undefined // 经度
 }
 
 @Entry
@@ -41,9 +49,158 @@ struct Index {
   private endMarker: map.Marker | undefined = undefined;
   private tapMarker: map.Marker | undefined = undefined;
   private waypointMarkers: map.Marker[] = [];
+  private tmpWaypointMarker: map.Marker | undefined = undefined;
   private gpxReaded: boolean = false
-  private chartOpts : Partial<ChartOptions> | undefined = undefined
+  private chartOpts: Partial<ChartOptions> | undefined = undefined
   private sliderValue: [number, number] = [0, 100]
+  private static wayPointNamePrefix: string = '兴趣点:'
+  @State windowData: MarkerWindowData = new MarkerWindowData()
+  private tmpWaypointTag = 'tmmpWaypoint'
+  @State showDelete: boolean = false
+  private inMarkMode: boolean = false
+  private elevationService = new ElevationService()
+
+  // 自定义信息窗Builder
+  @LocalBuilder
+  customInfoWindowBuilder(delegate: map.MarkerDelegate) {
+    if (delegate.marker) {
+      Column() {
+        // 标题
+        Text('编辑兴趣点信息')
+          .fontSize(15)
+          .fontWeight(FontWeight.Bold)
+          .margin({ top: 10, bottom: 5 })
+
+        // 输入区域
+        Column() {
+          // 经度
+          Row() {
+            Text('经度 : ')
+              .fontSize(12)
+              .textAlign(TextAlign.End)
+
+            TextInput({ text: this.windowData.longitude })
+              .width('40%')
+              .borderRadius(4)
+              .borderWidth(1)
+              .borderColor('#ccc')
+              .padding(5)
+              .onChange((value: string) => {
+                this.windowData.longitude = value
+              })
+          }
+          .margin({ bottom: 10 })
+
+          // 纬度
+          Row() {
+            Text('纬度 : ')
+              .fontSize(12)
+              .textAlign(TextAlign.End)
+
+            TextInput({ text: this.windowData.latitude })
+              .width('40%')
+              .borderRadius(4)
+              .borderWidth(1)
+              .borderColor('#ccc')
+              .padding(5)
+              .onChange((value: string) => {
+                this.windowData.latitude = value
+              })
+          }
+          .margin({ bottom: 10 })
+
+          // 名称
+          Row() {
+            Text('名称 : ')
+              .fontSize(12)
+              .textAlign(TextAlign.End)
+
+            TextInput({ text: (this.windowData.title)})
+              .width('40%')
+              .borderRadius(4)
+              .borderWidth(1)
+              .borderColor('#ccc')
+              .padding(5)
+              .onChange((value: string) => {
+                this.windowData.title = value
+              })
+          }
+          .margin({ bottom: 10 })
+
+          // 描述
+          Row() {
+            Text('描述 : ')
+              .fontSize(12)
+              .textAlign(TextAlign.End)
+
+            TextInput({ text: this.windowData.des })
+              .width('40%')
+              .borderRadius(4)
+              .borderWidth(1)
+              .borderColor('#ccc')
+              .padding(5)
+              .onChange((value: string) => {
+                this.windowData.des = value
+              })
+          }
+          .margin({ bottom: 15 })
+        }
+        .padding({ left: 15, right: 15 })
+
+        // 按钮区域
+        Row() {
+          // 取消按钮
+          Button('取消')
+            .width(60)
+            .height(30)
+            .backgroundColor('#f0f0f0')
+            .fontColor('#333')
+            .onClick(() => {
+              this.onCancel();
+              delegate.marker?.setInfoWindowVisible(false)
+            })
+
+          if (this.showDelete) {
+            // 间距
+            Blank()
+              .width(10)
+
+            // 保存按钮
+            Button('删除')
+              .width(60)
+              .height(30)
+              .backgroundColor('#1890ff')
+              .fontColor(Color.White)
+              .onClick(() => {
+                delegate.marker?.setInfoWindowVisible(false)
+                this.onDelete(delegate.marker!);
+              })
+          }
+
+          // 间距
+          Blank()
+            .width(10)
+
+          // 保存按钮
+          Button('保存')
+            .width(60)
+            .height(30)
+            .backgroundColor('#1890ff')
+            .fontColor(Color.White)
+            .onClick(() => {
+              this.onSave(delegate.marker!);
+              delegate.marker?.setInfoWindowVisible(false)
+            })
+        }
+        .justifyContent(FlexAlign.Center)
+        .margin({ bottom: 10 })
+      }
+      // .width('80%')
+      .backgroundColor(Color.White)
+      .borderRadius(10)
+      .padding(5)
+    }
+  }
 
   build() {
     Stack({ alignContent: Alignment.TopEnd }) {
@@ -52,7 +209,10 @@ struct Index {
           // 构造MapComponent
           MapComponent({
             mapOptions: this.mapOption,
-            mapCallback: this.callback
+            mapCallback: this.callback,
+            customInfoWindow: (markerDelegate: map.MarkerDelegate) => {
+              this.customInfoWindowBuilder(markerDelegate)
+            }
           })
             .width($r('app.string.full_page'))
             .height($r('app.string.map_ratio'))
@@ -74,7 +234,6 @@ struct Index {
                   onChange: (value) => {
                     if (Array.isArray(value)) {
                       this.moveStartEndMarkers(value)
-                      console.debug("xuuuuuuuuu " + value.toString());
                     }
                   }
                 })
@@ -139,7 +298,8 @@ struct Index {
           .height(48)
           .margin({ top: 8, right: 16 })
           .onClick(() => {
-            if (this.waypointMarkers.length > 0) {
+            this.inMarkMode = !this.inMarkMode
+            if (!this.inMarkMode) {
               this.clearWayPointMarkers()
             } else {
               this.addWayPointMarkers()
@@ -174,6 +334,42 @@ struct Index {
             message: '地图加载完成',
             duration: 4000
           })
+        })
+        // 如果定义了这个，那么就相当于由用户来定义点击效果，就不会自动居中了
+        this.mapController.on('markerClick', (marker)=> {
+          // 只有途经点Marker会触发
+          if (marker.getTitle().startsWith(Index.wayPointNamePrefix)) {
+            this.windowData.title = marker.getTitle().substring(Index.wayPointNamePrefix.length)
+          } else {
+            this.windowData.title = marker.getTitle()
+          }
+          this.windowData.des = marker.getSnippet()
+          this.windowData.latitude = marker.getPosition().latitude.toString()
+          this.windowData.longitude = marker.getPosition().longitude.toString()
+          this.mapController?.animateCamera(map.newLatLng({
+            latitude: marker.getPosition().latitude,
+            longitude: marker.getPosition().longitude
+          }, 15), 500)
+          this.showDelete = true
+          marker.setInfoWindowVisible(true) // 打开自定义信息窗
+        })
+        this.mapController.on('mapLongClick', async (point) => {
+          // 判断当前为兴趣点编辑模式
+          if (this.inMarkMode) {
+            this.windowData.title = ''
+            this.windowData.des = ''
+            this.windowData.latitude = point.latitude.toString()
+            this.windowData.longitude = point.longitude.toString()
+            await this.addTempWayPointMarker(point)
+            this.showDelete = false
+            this.tmpWaypointMarker?.setInfoWindowVisible(true)
+          }
+        })
+        this.mapController.on('mapClick', async (point) => {
+          // 判断当前是否有临时兴趣点的infoWindow正在打开
+          if (this.tmpWaypointMarker != undefined) {
+            this.onCancel()
+          }
         })
 
         const grantStatus = this.checkPermissions()
@@ -257,11 +453,23 @@ struct Index {
 
   // 定义一个转换函数
   private convertToLatLng(point: Point): mapCommon.LatLng {
-    let gcj02Posion: mapCommon.LatLng = map.convertCoordinateSync(mapCommon.CoordinateType.WGS84, mapCommon.CoordinateType.GCJ02, {
+    let gcj02Position: mapCommon.LatLng = map.convertCoordinateSync(mapCommon.CoordinateType.WGS84, mapCommon.CoordinateType.GCJ02, {
       latitude: point.lat,
       longitude: point.lon
     } as mapCommon.LatLng);
-    return gcj02Posion;
+    return gcj02Position;
+  }
+
+  private async convertToWaypoint(data: MarkerWindowData): Promise<Waypoint> {
+    let wgs84Position = gcj02_to_wgs84(Number(data.longitude), Number(data.latitude))
+    let point = new Waypoint()
+    point.name = data.title
+    point.desc = data.des
+    point.lat = wgs84Position[1]
+    point.lon = wgs84Position[0]
+    // todo 获取海拔优化，网络有延迟或者网络未连接
+    point.ele = await this.elevationService.getElevation(wgs84Position[1], wgs84Position[0])
+    return point
   }
 
   private async parseLatLngPoints() {
@@ -376,7 +584,7 @@ struct Index {
     if (this.tapMarker == undefined) {
       let tapMarkerOptions: mapCommon.MarkerOptions = {
         position: points[index],
-        title: '起点',
+        title: 'Tap',
         snippet: '行程开始位置',
         icon: this.createCustomMarkerIcon(MarkType.Normal), // 绿色图标
       };
@@ -437,6 +645,17 @@ struct Index {
     this.endMarker?.setPosition(points[points.length - 1])
   }
 
+  async addTempWayPointMarker(position: mapCommon.LatLng) {
+    let markerOptions: mapCommon.MarkerOptions = {
+      position: position,
+      title: Index.wayPointNamePrefix,
+      snippet: '',
+      icon: this.createCustomMarkerIcon(MarkType.WayPoint), // 绿色图标
+      clickable: true,
+    };
+    this.tmpWaypointMarker = await this.mapController!.addMarker(markerOptions);
+  }
+
   async addWayPointMarkers() {
     let points: Array<mapCommon.LatLng> = this.gpxParser.waypoints.map(
       point => this.convertToLatLng(point)
@@ -444,7 +663,7 @@ struct Index {
     for (let i = 0; i < points.length; i++) {
       let markerOptions: mapCommon.MarkerOptions = {
         position: points[i],
-        title: this.gpxParser.waypoints[i].name,
+        title: Index.wayPointNamePrefix + this.gpxParser.waypoints[i].name,
         snippet: this.gpxParser.waypoints[i].desc,
         icon: this.createCustomMarkerIcon(MarkType.WayPoint), // 绿色图标
         clickable: true
@@ -495,6 +714,50 @@ struct Index {
       this.polyline.remove();
       this.polyline = undefined;
     }
+  }
+
+  onCancel() {
+    if (this.tmpWaypointMarker != undefined) {
+      // 添加新兴趣点时取消
+      this.tmpWaypointMarker.remove()
+      this.tmpWaypointMarker = undefined
+    } else {
+      // 编辑现有兴趣点时取消,什么都不用做
+    }
+  }
+
+  async onSave(marker: map.Marker) {
+    if (this.tmpWaypointMarker != undefined) {
+      // 添加新兴趣点时保存
+      this.tmpWaypointMarker.setTitle(Index.wayPointNamePrefix + this.windowData.title)
+      this.tmpWaypointMarker.setSnippet(this.windowData.des)
+      this.tmpWaypointMarker.setPosition( {longitude: Number(this.windowData.longitude), latitude: Number(this.windowData.latitude)} )
+      this.waypointMarkers.push(this.tmpWaypointMarker)
+      this.gpxParser.waypoints.push(
+        await this.convertToWaypoint(this.windowData)
+      )
+      this.tmpWaypointMarker = undefined
+    } else {
+      // 编辑现有兴趣点时保存
+      let index = this.waypointMarkers.indexOf(marker)
+      marker.setTitle(Index.wayPointNamePrefix + this.windowData.title)
+      marker.setSnippet(this.windowData.des)
+      marker.setPosition( {longitude: Number(this.windowData.longitude), latitude: Number(this.windowData.latitude)} )
+      let waypoint = await this.convertToWaypoint(this.windowData)
+      this.gpxParser.waypoints[index].name = waypoint.name
+      this.gpxParser.waypoints[index].desc = waypoint.desc
+      this.gpxParser.waypoints[index].lat = waypoint.lat
+      this.gpxParser.waypoints[index].lon = waypoint.lon
+      this.gpxParser.waypoints[index].ele = waypoint.ele
+    }
+  }
+
+  onDelete(marker: map.Marker) {
+    // 一定是对现有的兴趣点进行删除
+    let index = this.waypointMarkers.indexOf(marker)
+    this.waypointMarkers.splice(index, 1)
+    this.gpxParser.waypoints.splice(index, 1)
+    marker.remove()
   }
 
   private getScreenHeight(): number {
