@@ -48,6 +48,7 @@ struct Index {
   private startMarker: map.Marker | undefined = undefined;
   private endMarker: map.Marker | undefined = undefined;
   private tapMarker: map.Marker | undefined = undefined;
+  private tapMarkerIndex: number = -1
   private waypointMarkers: map.Marker[] = [];
   private tmpWaypointMarker: map.Marker | undefined = undefined;
   private gpxReaded: boolean = false
@@ -55,10 +56,10 @@ struct Index {
   private sliderValue: [number, number] = [0, 100]
   private static wayPointNamePrefix: string = '兴趣点:'
   @State windowData: MarkerWindowData = new MarkerWindowData()
-  private tmpWaypointTag = 'tmmpWaypoint'
   @State showDelete: boolean = false
   private inMarkMode: boolean = false
   private elevationService = new ElevationService()
+  @State inChangeStartPointMode: boolean = false
 
   // 自定义信息窗Builder
   @LocalBuilder
@@ -108,57 +109,69 @@ struct Index {
               })
           }
           .margin({ bottom: 10 })
+          if (!this.inChangeStartPointMode) {
+            // 名称
+            Row() {
+              Text('名称 : ')
+                .fontSize(12)
+                .textAlign(TextAlign.End)
 
-          // 名称
-          Row() {
-            Text('名称 : ')
-              .fontSize(12)
-              .textAlign(TextAlign.End)
+              TextInput({ text: (this.windowData.title) })
+                .width('40%')
+                .borderRadius(4)
+                .borderWidth(1)
+                .borderColor('#ccc')
+                .padding(5)
+                .onChange((value: string) => {
+                  this.windowData.title = value
+                })
+            }
+            .margin({ bottom: 10 })
 
-            TextInput({ text: (this.windowData.title)})
-              .width('40%')
-              .borderRadius(4)
-              .borderWidth(1)
-              .borderColor('#ccc')
-              .padding(5)
-              .onChange((value: string) => {
-                this.windowData.title = value
-              })
+            // 描述
+            Row() {
+              Text('描述 : ')
+                .fontSize(12)
+                .textAlign(TextAlign.End)
+
+              TextInput({ text: this.windowData.des })
+                .width('40%')
+                .borderRadius(4)
+                .borderWidth(1)
+                .borderColor('#ccc')
+                .padding(5)
+                .onChange((value: string) => {
+                  this.windowData.des = value
+                })
+            }
+            .margin({ bottom: 15 })
           }
-          .margin({ bottom: 10 })
-
-          // 描述
-          Row() {
-            Text('描述 : ')
-              .fontSize(12)
-              .textAlign(TextAlign.End)
-
-            TextInput({ text: this.windowData.des })
-              .width('40%')
-              .borderRadius(4)
-              .borderWidth(1)
-              .borderColor('#ccc')
-              .padding(5)
-              .onChange((value: string) => {
-                this.windowData.des = value
-              })
-          }
-          .margin({ bottom: 15 })
         }
         .padding({ left: 15, right: 15 })
 
         // 按钮区域
         Row() {
+          if (this.inChangeStartPointMode) {
+            Button('设置为起点')
+              .width(160)
+              .height(30)
+              .backgroundColor('#f0f0f0')
+              .fontColor('#333')
+              .onClick(() => {
+                this.onNewStartPointChange();
+                delegate.marker?.setInfoWindowVisible(false)
+              })
+          } else {
           // 取消按钮
-          Button('取消')
-            .width(60)
-            .height(30)
-            .backgroundColor('#f0f0f0')
-            .fontColor('#333')
-            .onClick(() => {
-              this.onCancel();
-              delegate.marker?.setInfoWindowVisible(false)
-            })
+            Button('取消')
+              .width(60)
+              .height(30)
+              .backgroundColor('#f0f0f0')
+              .fontColor('#333')
+              .onClick(() => {
+                this.onCancel();
+                delegate.marker?.setInfoWindowVisible(false)
+              })
 
           if (this.showDelete) {
             // 间距
@@ -191,6 +204,7 @@ struct Index {
               this.onSave(delegate.marker!);
               delegate.marker?.setInfoWindowVisible(false)
             })
+          }
         }
         .justifyContent(FlexAlign.Center)
         .margin({ bottom: 10 })
@@ -254,7 +268,7 @@ struct Index {
             }
           }
         }
-
+        // todo 要能监听Chart的滑动事件，否则就要换库
         ELEChart({chart: this.chart, chartHeight: this.getScreenHeight() * 0.15, onReady: ()=> {
           this.parseElePoints()
         }, onTap: async (index)=> {
@@ -304,6 +318,14 @@ struct Index {
             } else {
               this.addWayPointMarkers()
             }
+          })
+
+        Image($r('app.media.icon_startpoint'))
+          .width(48)
+          .height(48)
+          .margin({ top: 8, right: 16 })
+          .onClick(() => {
+            this.intoStartPointChangeMode()
           })
       }
     }
@@ -592,6 +614,8 @@ struct Index {
     } else {
       this.tapMarker.setPosition(points[index])
     }
+    this.tapMarkerIndex = index
+    this.tapMarker?.setClickable(this.inChangeStartPointMode) // 修改轨迹起点状态支持tapMarker点击
   }
 
   createCustomMarkerIcon(type: MarkType): Resource {
@@ -670,6 +694,23 @@ struct Index {
       };
       this.waypointMarkers.push(await this.mapController!.addMarker(markerOptions));
     }
+  }
+
+  intoStartPointChangeMode() {
+    let points = this.gpxParser.tracks[0].segments[0]
+    let startToEndDistance = GPXParser.calculateDistance(points[0].lat, points[0].lon, points[points.length - 1].lat, points[points.length - 1].lon)
+    if (startToEndDistance < 100) {
+      // 首尾节点距离小于100米，认为是环线轨迹
+      this.inChangeStartPointMode = true
+    } else {
+      // 非环线轨迹
+      // todo: 添加提示区域
+      promptAction.showToast({
+        message: '当前轨迹非环线轨迹，不支持修改起点',
+        duration: 4000
+      })
+    }
+
   }
 
   clearWayPointMarkers() {
@@ -758,6 +799,17 @@ struct Index {
     this.waypointMarkers.splice(index, 1)
     this.gpxParser.waypoints.splice(index, 1)
     marker.remove()
+  }
+
+  onNewStartPointChange() {
+    let index = this.tapMarkerIndex
+    let points = this.gpxParser.tracks[0].segments[0]
+    const firstPart = points.slice(index, points.length -1)
+    const secondPart = points.slice(0, index - 1)
+    let newPoints = [...firstPart, ...secondPart]
+    this.gpxParser.tracks[0].segments[0] = newPoints
+    this.parseLatLngPoints()
+    this.parseElePoints()
   }
 
   private getScreenHeight(): number {

@@ -453,7 +453,7 @@ export default class GPXParser {
     track.distance.cumul = [0];
 
     for (let i = 1; i < allPoints.length; i++) {
-      const dist = this.calculateDistance(
+      const dist = GPXParser.calculateDistance(
         allPoints[i - 1].lat, allPoints[i - 1].lon,
         allPoints[i].lat, allPoints[i].lon
       );
@@ -495,7 +495,7 @@ export default class GPXParser {
     track.slopes = [];
     for (let i = 1; i < allPoints.length; i++) {
       if (allPoints[i].ele && allPoints[i - 1].ele) {
-        const dist = this.calculateDistance(
+        const dist = GPXParser.calculateDistance(
           allPoints[i - 1].lat, allPoints[i - 1].lon,
           allPoints[i].lat, allPoints[i].lon
         );
@@ -518,7 +518,7 @@ export default class GPXParser {
     route.distance.cumul = [0];
 
     for (let i = 1; i < route.points.length; i++) {
-      const dist = this.calculateDistance(
+      const dist = GPXParser.calculateDistance(
         route.points[i - 1].lat, route.points[i - 1].lon,
         route.points[i].lat, route.points[i].lon
       );
@@ -535,7 +535,7 @@ export default class GPXParser {
    * @param lon2 - 点2经度
    * @returns 距离（米）
    */
-  private calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  static calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
     const R = 6371e3; // 地球半径（米）
     const φ1 = lat1 * Math.PI / 180;
     const φ2 = lat2 * Math.PI / 180;

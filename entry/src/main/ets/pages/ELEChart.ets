@@ -55,6 +55,7 @@ struct ChartHeader {
   build() {
     Row() {
       // 海拔统计信息
+      // todo: 添加总距离、总爬升信息
       Column() {
         Text('累计距离')
           .fontSize(12)
