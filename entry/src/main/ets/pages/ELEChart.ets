@@ -34,6 +34,7 @@ export struct ELEChart {
             this.dis = chartOpts.categories[index].toString() + 'km'
           }
         }
+        // this.chart.onTouchEvent(null)
       }})
         .width('100%')
 

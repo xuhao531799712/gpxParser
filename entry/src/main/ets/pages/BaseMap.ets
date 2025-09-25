@@ -1,19 +1,21 @@
 import { map, mapCommon, MapComponent } from '@kit.MapKit';
-import { AsyncCallback } from '@kit.BasicServicesKit';
+import { AsyncCallback, BusinessError } from '@kit.BasicServicesKit';
 import { display, promptAction } from '@kit.ArkUI';
-import { abilityAccessCtrl, Permissions } from '@kit.AbilityKit';
+import { abilityAccessCtrl, common, Permissions } from '@kit.AbilityKit';
 import { PermissionsUtil } from '../common/utils/PermissionsUtil';
 import { LocationUtil } from '../common/utils/LocationUtil';
 import { authentication } from '@kit.AccountKit';
 import { buffer, JSON, util } from '@kit.ArkTS';
-import { fileIo } from '@kit.CoreFileKit';
-import GPXParser from '../common/parser/GPXParser';
-import { Point, Waypoint } from '../common/parser/GPXTypes';
+import { fileIo, picker } from '@kit.CoreFileKit';
+import GPXParser from '../common/gpx/GPXParser';
+import { Point, Waypoint } from '../common/gpx/GPXTypes';
 import { ELEChart } from './ELEChart';
 import { ChartOptions, UChartsController } from '@ibestservices/ucharts';
 import {UISlider} from '@hw-agconnect/ui-slider'
 import { gcj02_to_wgs84 } from '../common/utils/CoordinateUtil';
 import { ElevationService } from '../common/utils/ElevationService';
+import { GPXWriter } from '../common/gpx/GPXWriter';
+import uri from '@ohos.uri';
 
 PersistentStorage.persistProp('avatarUris', '');
 
@@ -292,10 +294,10 @@ struct Index {
           .margin({ top: 8, right: 16 })
           .enabled(!this.showSlider)
           .onClick(() => {
-            if (this.showSlider) return
-            this.gpxParser.revertTrackPoints(this.gpxParser.tracks[0])
-            this.parseLatLngPoints()
-            this.parseElePoints()
+              if (this.showSlider) return
+              this.gpxParser.revertTrackPoints(this.gpxParser.tracks[0])
+              this.parseLatLngPoints()
+              this.parseElePoints()
             })
 
         Image($r('app.media.icon_cut'))
@@ -311,12 +313,12 @@ struct Index {
           .width(48)
           .height(48)
           .margin({ top: 8, right: 16 })
-          .onClick(() => {
+          .onClick(async () => {
             this.inMarkMode = !this.inMarkMode
             if (!this.inMarkMode) {
               this.clearWayPointMarkers()
             } else {
-              this.addWayPointMarkers()
+              await this.addWayPointMarkers()
             }
           })
 
@@ -326,6 +328,14 @@ struct Index {
           .margin({ top: 8, right: 16 })
           .onClick(() => {
             this.intoStartPointChangeMode()
+          })
+
+        Image($r('app.media.icon_save'))
+          .width(48)
+          .height(48)
+          .margin({ top: 8, right: 16 })
+          .onClick(async () => {
+            await this.saveGPXFile()
           })
       }
     }
@@ -710,8 +720,35 @@ struct Index {
         duration: 4000
       })
     }
-
   }
+
+  async saveGPXFile() {
+    // 创建文件管理器选项实例。
+    let defaultName = this.getFileNameFromUrl(this.gpxFileUrl)
+    const documentSaveOptions = new picker.DocumentSaveOptions();
+    documentSaveOptions.newFileNames = [defaultName];
+    let context = getContext(this) as common.Context;
+    const documentViewPicker = new picker.DocumentViewPicker(context);
+    try {
+      let uris: string[] = await documentViewPicker.save(documentSaveOptions)
+      await GPXWriter.writeGPXFile(this.gpxParser.tracks, this.gpxParser.waypoints, uris[0])
+      console.info('documentViewPicker.save to file succeed and uri is:' + uris[0]);
+    } catch (err) {
+      console.error(`Invoke documentViewPicker.save failed, code is ${err.code}, message is ${err.message}`);
+    }
+  }
+
+  private getFileNameFromUrl(url: string): string {
+  try {
+    // 创建 URI 对象
+    const uriObj = new uri.URI(url);
+    // 获取路径部分
+    return uriObj.getLastSegment();
+  } catch (error) {
+    console.error(`解析URI失败: ${error.message}`);
+    return '';
+  }
+}
 
   clearWayPointMarkers() {
     this.waypointMarkers.forEach((marker)=> {
