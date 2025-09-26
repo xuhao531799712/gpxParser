@@ -1,5 +1,5 @@
 import { map, mapCommon, MapComponent } from '@kit.MapKit';
-import { AsyncCallback, BusinessError } from '@kit.BasicServicesKit';
+import { AsyncCallback } from '@kit.BasicServicesKit';
 import { display, promptAction } from '@kit.ArkUI';
 import { abilityAccessCtrl, common, Permissions } from '@kit.AbilityKit';
 import { PermissionsUtil } from '../common/utils/PermissionsUtil';
@@ -9,13 +9,12 @@ import { buffer, JSON, util } from '@kit.ArkTS';
 import { fileIo, picker } from '@kit.CoreFileKit';
 import GPXParser from '../common/gpx/GPXParser';
 import { Point, Waypoint } from '../common/gpx/GPXTypes';
-import { ELEChart } from './ELEChart';
-import { ChartOptions, UChartsController } from '@ibestservices/ucharts';
 import {UISlider} from '@hw-agconnect/ui-slider'
 import { gcj02_to_wgs84 } from '../common/utils/CoordinateUtil';
 import { ElevationService } from '../common/utils/ElevationService';
 import { GPXWriter } from '../common/gpx/GPXWriter';
 import uri from '@ohos.uri';
+import { ELEChart } from './ELEChart';
 
 PersistentStorage.persistProp('avatarUris', '');
 
@@ -38,7 +37,6 @@ class MarkerWindowData {
 struct Index {
   @State mapController?: map.MapComponentController = undefined
   @StorageLink('avatarUris') avatarUri: string = ''
-  @State chart: UChartsController = new UChartsController();
   @State showSlider: boolean = false
   private gpxFileUrl: string = '33'
   private mapOption?: mapCommon.MapOptions
@@ -54,7 +52,6 @@ struct Index {
   private waypointMarkers: map.Marker[] = [];
   private tmpWaypointMarker: map.Marker | undefined = undefined;
   private gpxReaded: boolean = false
-  private chartOpts: Partial<ChartOptions> | undefined = undefined
   private sliderValue: [number, number] = [0, 100]
   private static wayPointNamePrefix: string = '兴趣点:'
   @State windowData: MarkerWindowData = new MarkerWindowData()
@@ -62,7 +59,11 @@ struct Index {
   private inMarkMode: boolean = false
   private elevationService = new ElevationService()
   @State inChangeStartPointMode: boolean = false
-
+  @State spec: Record<string, string|ESObject> | undefined = undefined
+  @State dis: number = 0 // 单位km
+  @State ele: number = 0 // 单位m
+  @State totalDis: number = 0
+  @State totalEle: number = 0
   // 自定义信息窗Builder
   @LocalBuilder
   customInfoWindowBuilder(delegate: map.MarkerDelegate) {
@@ -270,12 +271,14 @@ struct Index {
             }
           }
         }
-        // todo 要能监听Chart的滑动事件，否则就要换库
-        ELEChart({chart: this.chart, chartHeight: this.getScreenHeight() * 0.15, onReady: ()=> {
-          this.parseElePoints()
-        }, onTap: async (index)=> {
-          await this.addTapMarker(index)
-        }, getChartOpt: () => {return this.chartOpts}})
+
+        ELEChart({spec: this.spec, chartWidth: this.getScreenWidth(), chartHeight: this.getScreenHeight() * 0.15, onReady: ()=> {
+            this.parseELEPoints()
+          }, onTap: async (index)=> {
+            this.updateDisEle(index)
+            await this.addTapMarker(index)
+          },
+          dis: this.dis, ele: this.ele, totalDis: this.totalDis, totalEle: this.totalEle})
       }
 
       Column() {
@@ -297,7 +300,7 @@ struct Index {
               if (this.showSlider) return
               this.gpxParser.revertTrackPoints(this.gpxParser.tracks[0])
               this.parseLatLngPoints()
-              this.parseElePoints()
+              this.parseELEPoints()
             })
 
         Image($r('app.media.icon_cut'))
@@ -473,7 +476,7 @@ struct Index {
           // 解析成功，可从parser中取对应的坐标数据
           this.gpxReaded = true
           await this.parseLatLngPoints()
-          this.parseElePoints()
+          this.parseELEPoints()
         } else {
           console.error("readGPX failed with error message: " + err.message);
         }
@@ -548,6 +551,15 @@ struct Index {
       icon: this.createCustomMarkerIcon(MarkType.End), // 红色图标
     };
     this.endMarker = await this.mapController?.addMarker(endMarkerOptions);
+    if (this.tapMarker == undefined) {
+      let tapMarkerOptions: mapCommon.MarkerOptions = {
+        position: points[0],
+        title: 'Tap',
+        icon: this.createCustomMarkerIcon(MarkType.Normal), // 绿色图标
+        visible: false
+      };
+      this.tapMarker = await this.mapController?.addMarker(tapMarkerOptions);
+    }
     try {
       this.polyline = await this.mapController?.addPolyline(polylineOption)
       this.zoomToTrackWithPadding()
@@ -556,7 +568,7 @@ struct Index {
     }
   }
 
-  parseElePoints() {
+  parseELEPoints() {
     if (this.gpxReaded != true) return
     // 海拔数据
     const allPoints: Point[] = [];
@@ -566,66 +578,109 @@ struct Index {
     let eles: Array<number> = allPoints.map(
       point => point.ele
     );
+
     // 单位米，需要/1000换算为km
-    let cumuls: Array<string> = this.gpxParser.tracks[0].distance.cumul.map(
-      cumul => (cumul / 1000.0).toFixed(2)
+    let cumuls: Array<number> = this.gpxParser.tracks[0].distance.cumul.map(
+      cumul => (cumul / 1000.0)
     );
-    this.chartOpts = {
-      type: "area",
-      categories: cumuls,
-      series: [
-        {
-          name: "", // 必须配置，隐藏海拔名称
-          data: eles,
-          legendShape: 'none'
-        }
-      ],
-      // enableScroll: true,
-      padding: [5,5,0,5],
-      xAxis: {
-        disabled: true,
-        // labelCount: 5, // 限制展示的X标数量，当放缩时可以显示被隐藏的
-      },
-      yAxis: {
-        gridType: 'dash',
-        dashLength: 2
-      },
-      dataLabel: false,
-      extra: {
-        area: {
-          activeType: 'hollow',
-          type: 'curve',
-          opacity: 1
-        },
-        markLine: {
-          type: 'dash'
-        },
-        tooltip: {
-          showBox: false,
-          xAxisLabel: true,
-          yAxisLabel: true
-        }
-      }
+
+    this.totalDis = this.gpxParser.tracks[0].distance.total / 1000.0
+    this.totalEle = this.gpxParser.tracks[0].elevation.pos
+
+    interface CombinedPoint {
+      'distance': number;
+      'ele': number;
     }
-    this.chart.updateData(this.chartOpts)
+
+    let data:CombinedPoint[] = eles.map((ele, index)=>{
+      const point: CombinedPoint = {
+        distance: cumuls[index],
+        ele: ele
+      };
+      return point
+    })
+    this.spec = {
+      'type': 'area',
+      'stack': false,
+      'data': {
+        'values': (data) as ESObject
+      },
+      'padding': {
+        'left': 10,
+        'right': 10,
+        'top': 0
+      },
+      'xField': ['distance'],
+      'yField': 'ele',
+      'seriesField': 'type',
+      'bar': {
+        'state': ({
+          'aaa': ({
+            'fill': 'red'
+          } as ESObject)
+        } as ESObject),
+        'style': ({
+          "stroke": "#000",
+          "lineWidth": 1
+        } as ESObject)
+      },
+      'legends': {
+        "visible": true,
+        "position": "start",
+        "orient": "top"
+      },
+      'line': {
+        'style': ({
+          'curveType': 'monotone'
+        } as ESObject)
+      },
+      'tooltip': {
+        'visible': false
+      },
+      'point': {
+        'style': {
+          'size': 0,
+          'fill': 'white',
+          'stroke': null,
+          'lineWidth': 2
+        } as ESObject,
+        'state': {
+          'dimension_hover': {
+            'size': 10
+          } as ESObject,
+        } as ESObject
+      },
+      'axes': [
+        {
+          'type': 'linear',
+          'orient': 'left',
+          'visible': true,
+          'range': {
+            'min': this.gpxParser.tracks[0].elevation.min,
+            'max': this.gpxParser.tracks[0].elevation.max
+          } as ESObject
+        } as ESObject,
+        {
+          'orient': 'bottom',
+          'visible': false
+        } as ESObject
+      ] as ESObject[],
+    }
   }
 
   async addTapMarker(index: number) {
+    if ( this.tapMarkerIndex == index ) return
+    this.tapMarkerIndex = index
     let points = this.polyline?.getPoints()
     if (points == undefined) return
-    if (this.tapMarker == undefined) {
-      let tapMarkerOptions: mapCommon.MarkerOptions = {
-        position: points[index],
-        title: 'Tap',
-        snippet: '行程开始位置',
-        icon: this.createCustomMarkerIcon(MarkType.Normal), // 绿色图标
-      };
-      this.tapMarker = await this.mapController?.addMarker(tapMarkerOptions);
-    } else {
-      this.tapMarker.setPosition(points[index])
-    }
-    this.tapMarkerIndex = index
+    this.tapMarker?.setPosition(points[index])
     this.tapMarker?.setClickable(this.inChangeStartPointMode) // 修改轨迹起点状态支持tapMarker点击
+    this.tapMarker?.setVisible(true)
+  }
+
+  updateDisEle(index: number) {
+    this.ele = this.gpxParser.tracks[0].segments[0][index].ele
+    this.dis = this.gpxParser.tracks[0].distance.cumul[index] / 1000.0
   }
 
   createCustomMarkerIcon(type: MarkType): Resource {
@@ -766,7 +821,7 @@ struct Index {
     this.gpxParser.trimTrackPoints(this.gpxParser.tracks[0], from, to)
 
     this.parseLatLngPoints()
-    this.parseElePoints()
+    this.parseELEPoints()
     this.sliderValue = [0, 100]
   }
 
@@ -846,13 +901,24 @@ struct Index {
     let newPoints = [...firstPart, ...secondPart]
     this.gpxParser.tracks[0].segments[0] = newPoints
     this.parseLatLngPoints()
-    this.parseElePoints()
+    this.parseELEPoints()
   }
 
   private getScreenHeight(): number {
     try {
       const displayInfo = display.getDefaultDisplaySync();
       return px2vp(displayInfo.height); // 原始为像素，转为虚拟像素
+    } catch (error) {
+      console.error('获取屏幕高度失败:', error);
+      // 设置默认高度（例如1280px）
+      return 1280
+    }
+  }
+
+  private getScreenWidth(): number {
+    try {
+      const displayInfo = display.getDefaultDisplaySync();
+      return px2vp(displayInfo.width); // 原始为像素，转为虚拟像素
     } catch (error) {
       console.error('获取屏幕高度失败:', error);
       // 设置默认高度（例如1280px）

@@ -24,8 +24,8 @@ export class Distance {
 export class Elevation {
   max: number = -Infinity;
   min: number = Infinity;
-  pos: number = 0;
-  neg: number = 0;
+  pos: number = 0; // 累计爬升
+  neg: number = 0; // 累计下降
   avg: number = 0;
 }
 

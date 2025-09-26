@@ -2,8 +2,8 @@
   "modelVersion": "5.0.5",
   "description": "Please describe the basic information.",
   "dependencies": {
-    "@ibestservices/ucharts": "^1.0.9",
-    "@hw-agconnect/ui-slider": "^1.0.2"
+    "@hw-agconnect/ui-slider": "^1.0.2",
+    "@visactor/harmony-vchart": "^1.13.5",
   },
   "devDependencies": {
     "@ohos/hypium": "1.0.21",
