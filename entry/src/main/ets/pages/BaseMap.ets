@@ -4,24 +4,31 @@ import { display, promptAction } from '@kit.ArkUI';
 import { abilityAccessCtrl, common, Permissions } from '@kit.AbilityKit';
 import { PermissionsUtil } from '../common/utils/PermissionsUtil';
 import { LocationUtil } from '../common/utils/LocationUtil';
-import { authentication } from '@kit.AccountKit';
-import { buffer, JSON, util } from '@kit.ArkTS';
+import { buffer } from '@kit.ArkTS';
 import { fileIo, picker } from '@kit.CoreFileKit';
 import GPXParser from '../common/gpx/GPXParser';
 import { Point, Waypoint } from '../common/gpx/GPXTypes';
-import {UISlider} from '@hw-agconnect/ui-slider'
+import { UISlider } from '@hw-agconnect/ui-slider';
 import { gcj02_to_wgs84 } from '../common/utils/CoordinateUtil';
 import { ElevationService } from '../common/utils/ElevationService';
 import { GPXWriter } from '../common/gpx/GPXWriter';
 import uri from '@ohos.uri';
 import { ELEChart } from './ELEChart';
 import { IconButton } from '../components/IconButton';
+import { PromptBar } from '../components/PromptBar';
 
 enum MarkType {
   Start, // 起点
   End, // 终点
   WayPoint, // 兴趣点
   Normal // 普通
+}
+
+enum EditMode {
+  None,
+  Trim, // 终点
+  MarkPoint, // 兴趣点
+  StartPoint // 普通
 }
 
 class MarkerWindowData {
@@ -35,11 +42,11 @@ class MarkerWindowData {
 @Component
 struct Index {
   @State mapController?: map.MapComponentController = undefined
-  @State showSlider: boolean = false
   private gpxFileUrl: string = '33'
   private mapOption?: mapCommon.MapOptions
   private callback?: AsyncCallback<map.MapComponentController>
-  private locationPermissions: Array<Permissions> = ['ohos.permission.LOCATION', 'ohos.permission.APPROXIMATELY_LOCATION']
+  private locationPermissions: Array<Permissions> =
+    ['ohos.permission.LOCATION', 'ohos.permission.APPROXIMATELY_LOCATION']
   private gpxParser: GPXParser = new GPXParser()
   private enableMyLocation: boolean = false
   private polyline: map.MapPolyline | undefined = undefined;
@@ -54,14 +61,15 @@ struct Index {
   private static wayPointNamePrefix: string = '兴趣点:'
   @State windowData: MarkerWindowData = new MarkerWindowData()
   @State showDelete: boolean = false
-  private inMarkMode: boolean = false
   private elevationService = new ElevationService()
-  @State inChangeStartPointMode: boolean = false
-  @State spec: Record<string, string|ESObject> | undefined = undefined
+  @State spec: Record<string, string | ESObject> | undefined = undefined
   @State dis: number = 0 // 单位km
   @State ele: number = 0 // 单位m
   @State totalDis: number = 0
   @State totalEle: number = 0
+  @State promptText: string = ''
+  @State @Watch('onEditModeChange') editMode: EditMode = EditMode.None
+
   // 自定义信息窗Builder
   @LocalBuilder
   customInfoWindowBuilder(delegate: map.MarkerDelegate) {
@@ -110,7 +118,8 @@ struct Index {
               })
           }
           .margin({ bottom: 10 })
-          if (!this.inChangeStartPointMode) {
+
+          if (this.editMode != EditMode.StartPoint) {
             // 名称
             Row() {
               Text('名称 : ')
@@ -152,7 +161,7 @@ struct Index {
 
         // 按钮区域
         Row() {
-          if (this.inChangeStartPointMode) {
+          if (this.editMode == EditMode.StartPoint) {
             Button('设置为起点')
               .width(160)
               .height(30)
@@ -163,7 +172,7 @@ struct Index {
                 delegate.marker?.setInfoWindowVisible(false)
               })
           } else {
-          // 取消按钮
+            // 取消按钮
             Button('取消')
               .width(60)
               .height(30)
@@ -174,43 +183,42 @@ struct Index {
                 delegate.marker?.setInfoWindowVisible(false)
               })
 
-          if (this.showDelete) {
+            if (this.showDelete) {
+              // 间距
+              Blank()
+                .width(10)
+
+              // 保存按钮
+              Button('删除')
+                .width(60)
+                .height(30)
+                .backgroundColor('#1890ff')
+                .fontColor(Color.White)
+                .onClick(() => {
+                  delegate.marker?.setInfoWindowVisible(false)
+                  this.onDelete(delegate.marker!);
+                })
+            }
+
             // 间距
             Blank()
               .width(10)
 
             // 保存按钮
-            Button('删除')
+            Button('保存')
               .width(60)
               .height(30)
               .backgroundColor('#1890ff')
               .fontColor(Color.White)
               .onClick(() => {
+                this.onSave(delegate.marker!);
                 delegate.marker?.setInfoWindowVisible(false)
-                this.onDelete(delegate.marker!);
               })
-          }
-
-          // 间距
-          Blank()
-            .width(10)
-
-          // 保存按钮
-          Button('保存')
-            .width(60)
-            .height(30)
-            .backgroundColor('#1890ff')
-            .fontColor(Color.White)
-            .onClick(() => {
-              this.onSave(delegate.marker!);
-              delegate.marker?.setInfoWindowVisible(false)
-            })
           }
         }
         .justifyContent(FlexAlign.Center)
         .margin({ bottom: 10 })
       }
-      // .width('80%')
       .backgroundColor(Color.White)
       .borderRadius(10)
       .padding(5)
@@ -231,52 +239,63 @@ struct Index {
           })
             .width($r('app.string.full_page'))
             .height($r('app.string.map_ratio'))
+          Column() {
+            if (this.editMode == EditMode.Trim) {
+              Column() {
+                Row() {
+                  Button("取消", { type: ButtonType.Normal })
+                    .width('15%')
+                    .onClick(() => {
+                      this.editMode = EditMode.None
+                      this.recoverStartEndMarkers()
+                    })
 
-          if (this.showSlider) {
-            Column() {
-              Row() {
-                Button("取消", {type: ButtonType.Normal})
-                .width('15%')
-                .onClick( ()=> {
-                  this.showSlider = false
-                  this.recoverStartEndMarkers()
-                })
-
-                UISlider({
-                  value: [0, 100],
-                  style: SliderStyle.OutSet,
-                  showTip: true,
-                  onChange: (value) => {
-                    if (Array.isArray(value)) {
-                      this.moveStartEndMarkers(value)
+                  UISlider({
+                    value: [0, 100],
+                    style: SliderStyle.OutSet,
+                    showTip: true,
+                    onChange: (value) => {
+                      if (Array.isArray(value)) {
+                        this.moveStartEndMarkers(value)
+                      }
                     }
-                  }
-                })
-                  .width('65%')
+                  })
+                    .width('65%')
 
-                Button("确认", {type: ButtonType.Normal})
-                .width('15%')
-                .onClick( ()=> {
-                  this.saveSliderChange()
-                  this.showSlider = false
-                })
+                  Button("确认", { type: ButtonType.Normal })
+                    .width('15%')
+                    .onClick(() => {
+                      this.saveSliderChange()
+                      this.editMode == EditMode.None
+                    })
+                }
+                .backgroundColor(Color.White)
+                .width('100%')
+                .justifyContent(FlexAlign.SpaceBetween)
+
+                Divider()
               }
-              .backgroundColor(Color.White)
-              .width('100%')
-              .justifyContent(FlexAlign.SpaceBetween)
-
-              Divider()
             }
+            PromptBar({ text: this.promptText })
           }
         }
 
-        ELEChart({spec: this.spec, chartWidth: this.getScreenWidth(), chartHeight: this.getScreenHeight() * 0.15, onReady: ()=> {
+        ELEChart({
+          spec: this.spec,
+          chartWidth: this.getScreenWidth(),
+          chartHeight: this.getScreenHeight() * 0.15,
+          onReady: () => {
             this.parseELEPoints()
-          }, onTap: async (index)=> {
+          },
+          onTap: async (index) => {
             this.updateDisEle(index)
             await this.addTapMarker(index)
           },
-          dis: this.dis, ele: this.ele, totalDis: this.totalDis, totalEle: this.totalEle})
+          dis: this.dis,
+          ele: this.ele,
+          totalDis: this.totalDis,
+          totalEle: this.totalEle
+        })
       }
 
       Column() {
@@ -292,43 +311,63 @@ struct Index {
         .type(ButtonType.ROUNDED_RECTANGLE)
         .borderRadius(10) // 圆角半径
         .margin({ top: 8, right: 16 })
-        .onClick( async () => {
-            await this.saveGPXFile()
+        .onClick(async () => {
+          await this.saveGPXFile()
         })
 
-        IconButton( { image: $r("app.media.icon_reverse"), text: '方向逆转'} )
+        IconButton({ image: $r("app.media.icon_reverse"), text: '方向逆转' })
           .margin({ top: 12, right: 16 })
-          .enabled(!this.showSlider)
           .onClick(() => {
-            if (this.showSlider) return
             this.gpxParser.revertTrackPoints(this.gpxParser.tracks[0])
             this.parseLatLngPoints()
             this.parseELEPoints()
+            promptAction.showToast({
+              message: $r('app.string.reverse_complete_toast'),
+              duration: 4000
+            })
           })
 
 
-        IconButton( { image: $r("app.media.icon_cut"), text: '轨迹裁剪'} )
+        IconButton({ image: $r("app.media.icon_cut"), text: '轨迹裁剪', selected: this.editMode == EditMode.Trim })
           .margin({ top: 6, right: 16 })
           .onClick(() => {
-            this.showSlider = true
+            if (this.editMode == EditMode.Trim) {
+              this.editMode = EditMode.None
+            } else {
+              this.editMode = EditMode.Trim
+            }
             // todo: 同时禁止其他编辑功能使用
           })
 
-        IconButton( { image: $r("app.media.icon_marker_home"), text: '标记编辑'} )
+        IconButton({
+          image: $r("app.media.icon_marker_home"),
+          text: '标记编辑',
+          selected: this.editMode == EditMode.MarkPoint
+        })
           .margin({ top: 6, right: 16 })
           .onClick(async () => {
-            this.inMarkMode = !this.inMarkMode
-            if (!this.inMarkMode) {
+            if (this.editMode == EditMode.MarkPoint) {
+              this.editMode = EditMode.None
               this.clearWayPointMarkers()
             } else {
+              this.editMode = EditMode.MarkPoint
               await this.addWayPointMarkers()
             }
           })
 
-        IconButton( { image: $r("app.media.icon_start_change"), text: '起点调整'} )
+        IconButton({
+          image: $r("app.media.icon_start_change"),
+          text: '起点调整',
+          selected: this.editMode == EditMode.StartPoint
+        })
           .margin({ top: 6, right: 16 })
           .onClick(() => {
-            this.intoStartPointChangeMode()
+            if (this.editMode == EditMode.StartPoint) {
+              this.editMode = EditMode.None
+              this.tapMarker?.setClickable(false)
+            } else {
+              this.intoStartPointChangeMode()
+            }
           })
       }
     }
@@ -341,18 +380,20 @@ struct Index {
     this.gpxFileUrl = params['gpxUrl']
     this.enableMyLocation = (params['enableMyLocation'] == 'true')
     this.mapOption = {
-      position:{
+      position: {
         target: {
-          latitude:39.9,
-          longitude:116.4
+          latitude: 39.9,
+          longitude: 116.4
         },
         zoom: 15
-      }
+      },
+      mapType: mapCommon.MapType.TERRAIN
     }
 
     this.callback = async (err, mapController) => {
       if (!err) {
         this.mapController = mapController
+        mapController.setMapType(mapCommon.MapType.TERRAIN)
         this.mapController.on('mapLoad', async () => {
           console.info('on mapLoad')
           promptAction.showToast({
@@ -361,7 +402,7 @@ struct Index {
           })
         })
         // 如果定义了这个，那么就相当于由用户来定义点击效果，就不会自动居中了
-        this.mapController.on('markerClick', (marker)=> {
+        this.mapController.on('markerClick', (marker) => {
           // 只有途经点Marker会触发
           if (marker.getTitle().startsWith(Index.wayPointNamePrefix)) {
             this.windowData.title = marker.getTitle().substring(Index.wayPointNamePrefix.length)
@@ -380,7 +421,7 @@ struct Index {
         })
         this.mapController.on('mapLongClick', async (point) => {
           // 判断当前为兴趣点编辑模式
-          if (this.inMarkMode) {
+          if (this.editMode == EditMode.MarkPoint) {
             this.windowData.title = ''
             this.windowData.des = ''
             this.windowData.latitude = point.latitude.toString()
@@ -430,7 +471,8 @@ struct Index {
     const location = await LocationUtil.currentLocation()
     if (location != undefined) {
       // 由geoLocationManager获取到的是WGS84坐标系，而要在地图上显示需要转化为GCJ02坐标系，否则会有部分偏移
-      let gcj02Posion: mapCommon.LatLng = await map.convertCoordinate(mapCommon.CoordinateType.WGS84, mapCommon.CoordinateType.GCJ02, location);
+      let gcj02Posion: mapCommon.LatLng =
+        await map.convertCoordinate(mapCommon.CoordinateType.WGS84, mapCommon.CoordinateType.GCJ02, location);
       this.mapController?.animateCamera(map.newLatLng({
         latitude: gcj02Posion.latitude,
         longitude: gcj02Posion.longitude
@@ -462,10 +504,11 @@ struct Index {
 
   // 定义一个转换函数
   private convertToLatLng(point: Point): mapCommon.LatLng {
-    let gcj02Position: mapCommon.LatLng = map.convertCoordinateSync(mapCommon.CoordinateType.WGS84, mapCommon.CoordinateType.GCJ02, {
-      latitude: point.lat,
-      longitude: point.lon
-    } as mapCommon.LatLng);
+    let gcj02Position: mapCommon.LatLng =
+      map.convertCoordinateSync(mapCommon.CoordinateType.WGS84, mapCommon.CoordinateType.GCJ02, {
+        latitude: point.lat,
+        longitude: point.lon
+      } as mapCommon.LatLng);
     return gcj02Position;
   }
 
@@ -543,7 +586,9 @@ struct Index {
   }
 
   parseELEPoints() {
-    if (this.gpxReaded != true) return
+    if (this.gpxReaded != true) {
+      return
+    }
     // 海拔数据
     const allPoints: Point[] = [];
     this.gpxParser.tracks[0].segments.forEach(segment => {
@@ -566,7 +611,7 @@ struct Index {
       'ele': number;
     }
 
-    let data:CombinedPoint[] = eles.map((ele, index)=>{
+    let data: CombinedPoint[] = eles.map((ele, index) => {
       const point: CombinedPoint = {
         distance: cumuls[index],
         ele: ele
@@ -643,12 +688,15 @@ struct Index {
   }
 
   async addTapMarker(index: number) {
-    if ( this.tapMarkerIndex == index ) return
+    if (this.tapMarkerIndex == index) {
+      return
+    }
     this.tapMarkerIndex = index
     let points = this.polyline?.getPoints()
-    if (points == undefined) return
+    if (points == undefined) {
+      return
+    }
     this.tapMarker?.setPosition(points[index])
-    this.tapMarker?.setClickable(this.inChangeStartPointMode) // 修改轨迹起点状态支持tapMarker点击
     this.tapMarker?.setVisible(true)
   }
 
@@ -672,7 +720,9 @@ struct Index {
 
   // 调整地图视野，包含折线和标记
   zoomToTrackWithPadding() {
-    if (!this.mapController || this.gpxParser.tracks[0].segments[0].length === 0) return;
+    if (!this.mapController || this.gpxParser.tracks[0].segments[0].length === 0) {
+      return;
+    }
 
     // 计算包含所有点的边界
     let bounds: mapCommon.LatLngBounds = {
@@ -737,15 +787,16 @@ struct Index {
 
   intoStartPointChangeMode() {
     let points = this.gpxParser.tracks[0].segments[0]
-    let startToEndDistance = GPXParser.calculateDistance(points[0].lat, points[0].lon, points[points.length - 1].lat, points[points.length - 1].lon)
+    let startToEndDistance = GPXParser.calculateDistance(points[0].lat, points[0].lon, points[points.length - 1].lat,
+      points[points.length - 1].lon)
     if (startToEndDistance < 100) {
       // 首尾节点距离小于100米，认为是环线轨迹
-      this.inChangeStartPointMode = true
+      this.editMode = EditMode.StartPoint
+      this.tapMarker?.setClickable(true)
     } else {
       // 非环线轨迹
-      // todo: 添加提示区域
       promptAction.showToast({
-        message: '当前轨迹非环线轨迹，不支持修改起点',
+        message: $r('app.string.start_point_error_toast'),
         duration: 4000
       })
     }
@@ -768,19 +819,19 @@ struct Index {
   }
 
   private getFileNameFromUrl(url: string): string {
-  try {
-    // 创建 URI 对象
-    const uriObj = new uri.URI(url);
-    // 获取路径部分
-    return uriObj.getLastSegment();
-  } catch (error) {
-    console.error(`解析URI失败: ${error.message}`);
-    return '';
+    try {
+      // 创建 URI 对象
+      const uriObj = new uri.URI(url);
+      // 获取路径部分
+      return uriObj.getLastSegment();
+    } catch (error) {
+      console.error(`解析URI失败: ${error.message}`);
+      return '';
+    }
   }
-}
 
   clearWayPointMarkers() {
-    this.waypointMarkers.forEach((marker)=> {
+    this.waypointMarkers.forEach((marker) => {
       marker.remove()
     })
     this.waypointMarkers = []
@@ -838,7 +889,10 @@ struct Index {
       // 添加新兴趣点时保存
       this.tmpWaypointMarker.setTitle(Index.wayPointNamePrefix + this.windowData.title)
       this.tmpWaypointMarker.setSnippet(this.windowData.des)
-      this.tmpWaypointMarker.setPosition( {longitude: Number(this.windowData.longitude), latitude: Number(this.windowData.latitude)} )
+      this.tmpWaypointMarker.setPosition({
+        longitude: Number(this.windowData.longitude),
+        latitude: Number(this.windowData.latitude)
+      })
       this.waypointMarkers.push(this.tmpWaypointMarker)
       this.gpxParser.waypoints.push(
         await this.convertToWaypoint(this.windowData)
@@ -849,7 +903,7 @@ struct Index {
       let index = this.waypointMarkers.indexOf(marker)
       marker.setTitle(Index.wayPointNamePrefix + this.windowData.title)
       marker.setSnippet(this.windowData.des)
-      marker.setPosition( {longitude: Number(this.windowData.longitude), latitude: Number(this.windowData.latitude)} )
+      marker.setPosition({ longitude: Number(this.windowData.longitude), latitude: Number(this.windowData.latitude) })
       let waypoint = await this.convertToWaypoint(this.windowData)
       this.gpxParser.waypoints[index].name = waypoint.name
       this.gpxParser.waypoints[index].desc = waypoint.desc
@@ -870,7 +924,7 @@ struct Index {
   onNewStartPointChange() {
     let index = this.tapMarkerIndex
     let points = this.gpxParser.tracks[0].segments[0]
-    const firstPart = points.slice(index, points.length -1)
+    const firstPart = points.slice(index, points.length - 1)
     const secondPart = points.slice(0, index - 1)
     let newPoints = [...firstPart, ...secondPart]
     this.gpxParser.tracks[0].segments[0] = newPoints
@@ -897,6 +951,23 @@ struct Index {
       console.error('获取屏幕高度失败:', error);
       // 设置默认高度（例如1280px）
       return 1280
+    }
+  }
+
+  onEditModeChange() {
+    switch (this.editMode) {
+      case EditMode.None:
+        this.promptText = ''
+        break
+      case EditMode.Trim:
+        this.promptText = getContext(this).resourceManager.getStringSync($r('app.string.trim_prompt'))
+        break
+      case EditMode.MarkPoint:
+        this.promptText = getContext(this).resourceManager.getStringSync($r('app.string.mark_edit_prompt'))
+        break
+      case EditMode.StartPoint:
+        this.promptText = getContext(this).resourceManager.getStringSync($r('app.string.start_point_prompt'))
+        break
     }
   }
 }

@@ -31,6 +31,26 @@
     {
       "name": "app_name",
       "value": "WhereToMeet"
+    },
+    {
+      "name": "trim_prompt",
+      "value": "拖动滑竿两侧，按比例裁剪轨迹"
+    },
+    {
+      "name": "mark_edit_prompt",
+      "value": "点击现有标记点，在弹窗中进行二次编辑/删除操作；\n通过在地图上长按，添加新的标记点"
+    },
+    {
+      "name": "start_point_prompt",
+      "value": "拖动海拔图坐标到期望的新起点位置\uD83D\uDC47，\n再点击地图上标记点来设置为新起点"
+    },
+    {
+      "name": "start_point_error_toast",
+      "value": "当前轨迹非环状轨迹，不可进行起点调整\n环状轨迹标准：起点重终点距离小于100米"
+    },
+    {
+      "name": "reverse_complete_toast",
+      "value": "起点终点位置已完成调转"
     }
   ]
 }
