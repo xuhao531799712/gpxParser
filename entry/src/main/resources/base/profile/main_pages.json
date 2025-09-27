@@ -1,8 +1,9 @@
 {
   "src": [
-    "pages/Index",
     "pages/Test",
     "pages/BaseMap",
-    "pages/ELEChart"
+    "pages/ELEChart",
+    "pages/Index",
+    "pages/FileContentViewer"
   ]
 }

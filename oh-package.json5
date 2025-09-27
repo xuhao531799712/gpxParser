@@ -4,6 +4,7 @@
   "dependencies": {
     "@hw-agconnect/ui-slider": "^1.0.2",
     "@visactor/harmony-vchart": "^1.13.5",
+    "@ohos/togeojson": "^1.0.0"
   },
   "devDependencies": {
     "@ohos/hypium": "1.0.21",

@@ -1,6 +1,6 @@
 import { map, mapCommon, MapComponent } from '@kit.MapKit';
 import { AsyncCallback } from '@kit.BasicServicesKit';
-import { display, promptAction } from '@kit.ArkUI';
+import { display, promptAction, router } from '@kit.ArkUI';
 import { abilityAccessCtrl, common, Permissions } from '@kit.AbilityKit';
 import { PermissionsUtil } from '../common/utils/PermissionsUtil';
 import { LocationUtil } from '../common/utils/LocationUtil';
@@ -376,8 +376,8 @@ struct Index {
   }
 
   async aboutToAppear(): Promise<void> {
-    let params = (this.getUIContext().getRouter().getParams() as Record<string, string>)
-    this.gpxFileUrl = params['gpxUrl']
+    let params = (router.getParams() as Record<string, string>)
+    this.gpxFileUrl = params['fileUrl']
     this.enableMyLocation = (params['enableMyLocation'] == 'true')
     this.mapOption = {
       position: {
