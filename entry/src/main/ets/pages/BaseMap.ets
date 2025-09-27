@@ -15,8 +15,7 @@ import { ElevationService } from '../common/utils/ElevationService';
 import { GPXWriter } from '../common/gpx/GPXWriter';
 import uri from '@ohos.uri';
 import { ELEChart } from './ELEChart';
-
-PersistentStorage.persistProp('avatarUris', '');
+import { IconButton } from '../components/IconButton';
 
 enum MarkType {
   Start, // 起点
@@ -36,7 +35,6 @@ class MarkerWindowData {
 @Component
 struct Index {
   @State mapController?: map.MapComponentController = undefined
-  @StorageLink('avatarUris') avatarUri: string = ''
   @State showSlider: boolean = false
   private gpxFileUrl: string = '33'
   private mapOption?: mapCommon.MapOptions
@@ -282,40 +280,42 @@ struct Index {
       }
 
       Column() {
-        Image(this.avatarUri.length > 0 ? this.avatarUri : $r('app.media.user'))
-          .width(64)
-          .height(64)
-          .borderRadius(32)
-          .margin({ top: 16, right: 16 })
-          .onClick(async () => {
-            await this.getAvatarAndNickName()
-          })
+        Button() {
+          Text('导出')
+            .fontSize(15)
+            .fontColor(Color.White)
+            .fontWeight(FontWeight.Bold)
+        }
+        .width(60) // 宽度
+        .height(30) // 高度
+        .backgroundColor(Color.Red) // 红色背景
+        .type(ButtonType.ROUNDED_RECTANGLE)
+        .borderRadius(10) // 圆角半径
+        .margin({ top: 8, right: 16 })
+        .onClick( async () => {
+            await this.saveGPXFile()
+        })
 
-        Image($r('app.media.icon_reverse'))
-          .width(48)
-          .height(48)
-          .margin({ top: 8, right: 16 })
+        IconButton( { image: $r("app.media.icon_reverse"), text: '方向逆转'} )
+          .margin({ top: 12, right: 16 })
           .enabled(!this.showSlider)
           .onClick(() => {
-              if (this.showSlider) return
-              this.gpxParser.revertTrackPoints(this.gpxParser.tracks[0])
-              this.parseLatLngPoints()
-              this.parseELEPoints()
-            })
+            if (this.showSlider) return
+            this.gpxParser.revertTrackPoints(this.gpxParser.tracks[0])
+            this.parseLatLngPoints()
+            this.parseELEPoints()
+          })
 
-        Image($r('app.media.icon_cut'))
-          .width(48)
-          .height(48)
-          .margin({ top: 8, right: 16 })
+
+        IconButton( { image: $r("app.media.icon_cut"), text: '轨迹裁剪'} )
+          .margin({ top: 6, right: 16 })
           .onClick(() => {
             this.showSlider = true
             // todo: 同时禁止其他编辑功能使用
           })
 
-        Image($r('app.media.icon_mark_point'))
-          .width(48)
-          .height(48)
-          .margin({ top: 8, right: 16 })
+        IconButton( { image: $r("app.media.icon_marker_home"), text: '标记编辑'} )
+          .margin({ top: 6, right: 16 })
           .onClick(async () => {
             this.inMarkMode = !this.inMarkMode
             if (!this.inMarkMode) {
@@ -325,20 +325,10 @@ struct Index {
             }
           })
 
-        Image($r('app.media.icon_startpoint'))
-          .width(48)
-          .height(48)
-          .margin({ top: 8, right: 16 })
+        IconButton( { image: $r("app.media.icon_start_change"), text: '起点调整'} )
+          .margin({ top: 6, right: 16 })
           .onClick(() => {
             this.intoStartPointChangeMode()
-          })
-
-        Image($r('app.media.icon_save'))
-          .width(48)
-          .height(48)
-          .margin({ top: 8, right: 16 })
-          .onClick(async () => {
-            await this.saveGPXFile()
           })
       }
     }
@@ -445,22 +435,6 @@ struct Index {
         latitude: gcj02Posion.latitude,
         longitude: gcj02Posion.longitude
       }, 15), 500)
-    }
-  }
-
-  async getAvatarAndNickName() {
-    let authRequest = new authentication.HuaweiIDProvider().createAuthorizationWithHuaweiIDRequest();
-    authRequest.scopes = ['profile']
-    authRequest.forceAuthorization = true
-    authRequest.state = util.generateRandomUUID()
-    try {
-      let controller = new authentication.AuthenticationController(getContext(this))
-      let response: authentication.AuthorizationWithHuaweiIDResponse = await controller.executeRequest(authRequest)
-      if (response) {
-        this.avatarUri = response.data?.avatarUri as string;
-      }
-    } catch (error) {
-      console.error("getAvatarAndNickName failed, error: " + JSON.stringify(error))
     }
   }
 
