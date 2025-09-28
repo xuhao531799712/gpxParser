@@ -21,6 +21,8 @@ import KMLParser from '../common/roadFileUtils/kml/KMLParser';
 import { KMLWriter } from '../common/roadFileUtils/kml/KMLWriter';
 import TCXParser from '../common/roadFileUtils/tcx/TCXParser';
 import { TCXWriter } from '../common/roadFileUtils/tcx/TCXWriter';
+import { GeoJSONWriter } from '../common/roadFileUtils/geoJSON/GeoJSONWriter';
+import { GeoJSONParser } from '../common/roadFileUtils/geoJSON/GeoJSONParser';
 
 enum MarkType {
   Start, // 起点
@@ -479,6 +481,8 @@ struct Index {
         this.parser = new TCXParser()
         break;
       case 'geojson':
+        this.parser = new GeoJSONParser()
+        break;
     }
   }
 
@@ -846,9 +850,11 @@ struct Index {
           await KMLWriter.writeKMLFile(this.parser.tracks, this.parser.waypoints, uris[0])
           break;
         case 'tcx':
-          await TCXWriter.writeTCXFile(this.parser.tracks, uris[0]) // todo 根据类型
+          await TCXWriter.writeTCXFile(this.parser.tracks, uris[0])
           break;
         case 'geojson':
+          await GeoJSONWriter.writeGeoJSONFile(this.parser.tracks, this.parser.waypoints, uris[0])
+          break;
       }
       console.info('documentViewPicker.save to file succeed and uri is:' + uris[0]);
     } catch (err) {

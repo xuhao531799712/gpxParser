@@ -1,4 +1,3 @@
-// GPXWriter.ets
 import { Track, Waypoint } from '../RoadTypes';
 import fs from '@ohos.file.fs';
 import { BusinessError } from '@ohos.base';
@@ -6,7 +5,7 @@ import { FeatureCollection } from 'geojson';
 
 export class GeoJSONWriter {
   /**
-   * 将轨迹和航点数据写入GPX文件
+   * 将轨迹和航点数据写入GeoJSON文件
    * @param tracks 轨迹数组
    * @param waypoints 航点数组
    * @param filePath 文件保存路径
@@ -34,7 +33,7 @@ export class GeoJSONWriter {
   }
 
   /**
-   * 生成GPX XML内容
+   * 生成GeoJSON内容
    */
   private static generateGeoJSONContent(
     tracks: Track[],
@@ -66,7 +65,7 @@ export class GeoJSONWriter {
     // 添加轨迹
     tracks.forEach(track => {
       track.segments.forEach(segment => {
-        const coordinates = segment.map(pt => [pt.lon, pt.lat]);
+        const coordinates = segment.map(pt => [pt.lon, pt.lat, pt.ele]);
         geoJSON.features.push({
           type: 'Feature',
           geometry: {

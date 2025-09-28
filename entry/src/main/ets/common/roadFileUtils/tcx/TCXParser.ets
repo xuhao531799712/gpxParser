@@ -1,5 +1,5 @@
 import { xml, util } from '@kit.ArkTS';
-import { Point, Track, Route, Waypoint, Metadata, Distance, Elevation, Parser } from '../RoadTypes';
+import { Point, Track, Route, Waypoint, Metadata, Parser } from '../RoadTypes';
 import { TrackUtils } from '../TrackUtils';
 
 export default class TCXParser implements Parser{
