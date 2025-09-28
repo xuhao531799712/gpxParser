@@ -19,6 +19,8 @@ import { CommonUtils } from '../common/utils/CommonUtils';
 import { TrackUtils } from '../common/roadFileUtils/TrackUtils';
 import KMLParser from '../common/roadFileUtils/kml/KMLParser';
 import { KMLWriter } from '../common/roadFileUtils/kml/KMLWriter';
+import TCXParser from '../common/roadFileUtils/tcx/TCXParser';
+import { TCXWriter } from '../common/roadFileUtils/tcx/TCXWriter';
 
 enum MarkType {
   Start, // 起点
@@ -71,6 +73,7 @@ struct Index {
   @State totalDis: number = 0
   @State totalEle: number = 0
   @State promptText: string = ''
+  @State enableWayPointEdit: boolean = true
   @State @Watch('onEditModeChange') editMode: EditMode = EditMode.None
 
   // 自定义信息窗Builder
@@ -342,21 +345,23 @@ struct Index {
             // todo: 同时禁止其他编辑功能使用
           })
 
-        IconButton({
-          image: $r("app.media.icon_marker_home"),
-          text: '标记编辑',
-          selected: this.editMode == EditMode.MarkPoint
-        })
-          .margin({ top: 6, right: 16 })
-          .onClick(async () => {
-            if (this.editMode == EditMode.MarkPoint) {
-              this.editMode = EditMode.None
-              this.clearWayPointMarkers()
-            } else {
-              this.editMode = EditMode.MarkPoint
-              await this.addWayPointMarkers()
-            }
+        if (this.enableWayPointEdit) {
+          IconButton({
+            image: $r("app.media.icon_marker_home"),
+            text: '标记编辑',
+            selected: this.editMode == EditMode.MarkPoint
           })
+            .margin({ top: 6, right: 16 })
+            .onClick(async () => {
+              if (this.editMode == EditMode.MarkPoint) {
+                this.editMode = EditMode.None
+                this.clearWayPointMarkers()
+              } else {
+                this.editMode = EditMode.MarkPoint
+                await this.addWayPointMarkers()
+              }
+            })
+        }
 
         IconButton({
           image: $r("app.media.icon_start_change"),
@@ -470,6 +475,9 @@ struct Index {
         this.parser = new KMLParser()
         break;
       case 'tcx':
+        this.enableWayPointEdit = false
+        this.parser = new TCXParser()
+        break;
       case 'geojson':
     }
   }
@@ -835,9 +843,11 @@ struct Index {
           await GPXWriter.writeGPXFile(this.parser.tracks, this.parser.waypoints, uris[0])
           break;
         case 'kml':
-          await KMLWriter.writeKMLFile(this.parser.tracks, this.parser.waypoints, uris[0]) // todo 根据类型
+          await KMLWriter.writeKMLFile(this.parser.tracks, this.parser.waypoints, uris[0])
           break;
         case 'tcx':
+          await TCXWriter.writeTCXFile(this.parser.tracks, uris[0]) // todo 根据类型
+          break;
         case 'geojson':
       }
       console.info('documentViewPicker.save to file succeed and uri is:' + uris[0]);
