@@ -4,6 +4,7 @@
     "pages/BaseMap",
     "pages/ELEChart",
     "pages/Index",
-    "pages/FileContentViewer"
+    "pages/FileContentViewer",
+    "pages/FileConversion"
   ]
 }

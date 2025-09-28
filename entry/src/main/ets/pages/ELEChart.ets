@@ -85,7 +85,7 @@ struct ChartHeader {
         Text('总爬升')
           .fontSize(12)
           .fontColor(Color.Gray)
-        Text(this.totalEle.toString() + 'm')
+        Text(this.totalEle.toFixed(2) + 'm')
           .fontSize(12)
           .fontColor(Color.Red)
       }

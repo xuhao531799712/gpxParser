@@ -1,4 +1,4 @@
-// GPXTypes.ets
+// RoadTypes.ets
 export class Point {
   lat: number = 0;
   lon: number = 0;
@@ -65,4 +65,13 @@ export class Metadata {
   time: Date = new Date();
   keywords: string = '';
   bounds: Bounds = new Bounds();
+}
+
+export interface Parser {
+  xmlSource: string;
+  metadata: Metadata | null;
+  waypoints: Waypoint[];
+  tracks: Track[];
+  routes: Route[];
+  parse(gpxString: string, completeCallback:(error?: Error)=>void): void;
 }

@@ -1,5 +1,5 @@
 // GPXWriter.ets
-import { Track, Point, Waypoint, Metadata } from './GPXTypes';
+import { Track, Point, Waypoint, Metadata } from '../RoadTypes';
 import fs from '@ohos.file.fs';
 import { BusinessError } from '@ohos.base';
 

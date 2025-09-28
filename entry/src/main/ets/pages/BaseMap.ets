@@ -6,16 +6,19 @@ import { PermissionsUtil } from '../common/utils/PermissionsUtil';
 import { LocationUtil } from '../common/utils/LocationUtil';
 import { buffer } from '@kit.ArkTS';
 import { fileIo, picker } from '@kit.CoreFileKit';
-import GPXParser from '../common/gpx/GPXParser';
-import { Point, Waypoint } from '../common/gpx/GPXTypes';
+import GPXParser from '../common/roadFileUtils/gpx/GPXParser';
+import { Parser, Point, Waypoint } from '../common/roadFileUtils/RoadTypes';
 import { UISlider } from '@hw-agconnect/ui-slider';
 import { gcj02_to_wgs84 } from '../common/utils/CoordinateUtil';
 import { ElevationService } from '../common/utils/ElevationService';
-import { GPXWriter } from '../common/gpx/GPXWriter';
-import uri from '@ohos.uri';
+import { GPXWriter } from '../common/roadFileUtils/gpx/GPXWriter';
 import { ELEChart } from './ELEChart';
 import { IconButton } from '../components/IconButton';
 import { PromptBar } from '../components/PromptBar';
+import { CommonUtils } from '../common/utils/CommonUtils';
+import { TrackUtils } from '../common/roadFileUtils/TrackUtils';
+import KMLParser from '../common/roadFileUtils/kml/KMLParser';
+import { KMLWriter } from '../common/roadFileUtils/kml/KMLWriter';
 
 enum MarkType {
   Start, // 起点
@@ -42,12 +45,12 @@ class MarkerWindowData {
 @Component
 struct Index {
   @State mapController?: map.MapComponentController = undefined
-  private gpxFileUrl: string = '33'
+  private fileUri: string = '33'
   private mapOption?: mapCommon.MapOptions
   private callback?: AsyncCallback<map.MapComponentController>
   private locationPermissions: Array<Permissions> =
     ['ohos.permission.LOCATION', 'ohos.permission.APPROXIMATELY_LOCATION']
-  private gpxParser: GPXParser = new GPXParser()
+  private parser: Parser = new GPXParser()
   private enableMyLocation: boolean = false
   private polyline: map.MapPolyline | undefined = undefined;
   private startMarker: map.Marker | undefined = undefined;
@@ -56,8 +59,8 @@ struct Index {
   private tapMarkerIndex: number = -1
   private waypointMarkers: map.Marker[] = [];
   private tmpWaypointMarker: map.Marker | undefined = undefined;
-  private gpxReaded: boolean = false
-  private sliderValue: [number, number] = [0, 100]
+  private fileReaded: boolean = false
+  private sliderValue: [number, number] = [0, 100] // TODO: slider是componentV2的组件，无法通过V1的state更新，所以这里这个功能有点问题
   private static wayPointNamePrefix: string = '兴趣点:'
   @State windowData: MarkerWindowData = new MarkerWindowData()
   @State showDelete: boolean = false
@@ -258,7 +261,7 @@ struct Index {
                       if (Array.isArray(value)) {
                         this.moveStartEndMarkers(value)
                       }
-                    }
+                    },
                   })
                     .width('65%')
 
@@ -298,7 +301,7 @@ struct Index {
         })
       }
 
-      Column() {
+      Column() { // todo: 添加返回按钮
         Button() {
           Text('导出')
             .fontSize(15)
@@ -312,13 +315,13 @@ struct Index {
         .borderRadius(10) // 圆角半径
         .margin({ top: 8, right: 16 })
         .onClick(async () => {
-          await this.saveGPXFile()
+          await this.saveFile()
         })
 
         IconButton({ image: $r("app.media.icon_reverse"), text: '方向逆转' })
           .margin({ top: 12, right: 16 })
           .onClick(() => {
-            this.gpxParser.revertTrackPoints(this.gpxParser.tracks[0])
+            TrackUtils.revertTrackPoints(this.parser.tracks[0])
             this.parseLatLngPoints()
             this.parseELEPoints()
             promptAction.showToast({
@@ -377,7 +380,7 @@ struct Index {
 
   async aboutToAppear(): Promise<void> {
     let params = (router.getParams() as Record<string, string>)
-    this.gpxFileUrl = params['fileUrl']
+    this.fileUri = params['fileUri']
     this.enableMyLocation = (params['enableMyLocation'] == 'true')
     this.mapOption = {
       position: {
@@ -386,9 +389,9 @@ struct Index {
           longitude: 116.4
         },
         zoom: 15
-      },
-      mapType: mapCommon.MapType.TERRAIN
+      }
     }
+    this.createParser()
 
     this.callback = async (err, mapController) => {
       if (!err) {
@@ -453,7 +456,21 @@ struct Index {
           duration: 4000
         })
       }
-      this.readGPX()
+      this.readFile()
+    }
+  }
+
+  createParser() {
+    let suffix = CommonUtils.getFileSuffix(this.fileUri)
+    switch (suffix) {
+      case 'gpx':
+        this.parser = new GPXParser()
+        break;
+      case 'kml':
+        this.parser = new KMLParser()
+        break;
+      case 'tcx':
+      case 'geojson':
     }
   }
 
@@ -480,21 +497,22 @@ struct Index {
     }
   }
 
-  async readGPX() {
+  async readFile() {
     try {
-      let file = fileIo.openSync(this.gpxFileUrl, fileIo.OpenMode.READ_ONLY);
+      let file = fileIo.openSync(this.fileUri, fileIo.OpenMode.READ_ONLY);
       let stat = fileIo.statSync(file.fd);
       const arrayBuffer = new ArrayBuffer(stat.size);
       let result = await fileIo.read(file.fd, arrayBuffer);
       let buf = buffer.from(arrayBuffer, 0, result).toString();
-      this.gpxParser.parse(buf, async (err) => {
+      fileIo.closeSync(file.fd)
+      this.parser.parse(buf, async (err) => {
         if (err == undefined) {
           // 解析成功，可从parser中取对应的坐标数据
-          this.gpxReaded = true
+          this.fileReaded = true
           await this.parseLatLngPoints()
           this.parseELEPoints()
         } else {
-          console.error("readGPX failed with error message: " + err.message);
+          console.error("readFile failed with error message: " + err.message);
         }
       })
     } catch (err) {
@@ -530,7 +548,7 @@ struct Index {
     this.clearPolyLine()
 
     const allPoints: Point[] = [];
-    this.gpxParser.tracks[0].segments.forEach(segment => {
+    this.parser.tracks[0].segments.forEach(segment => {
       allPoints.push(...segment);
     });
     let points: Array<mapCommon.LatLng> = allPoints.map(
@@ -586,12 +604,12 @@ struct Index {
   }
 
   parseELEPoints() {
-    if (this.gpxReaded != true) {
+    if (this.fileReaded != true) {
       return
     }
     // 海拔数据
     const allPoints: Point[] = [];
-    this.gpxParser.tracks[0].segments.forEach(segment => {
+    this.parser.tracks[0].segments.forEach(segment => {
       allPoints.push(...segment);
     });
     let eles: Array<number> = allPoints.map(
@@ -599,12 +617,12 @@ struct Index {
     );
 
     // 单位米，需要/1000换算为km
-    let cumuls: Array<number> = this.gpxParser.tracks[0].distance.cumul.map(
+    let cumuls: Array<number> = this.parser.tracks[0].distance.cumul.map(
       cumul => (cumul / 1000.0)
     );
 
-    this.totalDis = this.gpxParser.tracks[0].distance.total / 1000.0
-    this.totalEle = this.gpxParser.tracks[0].elevation.pos
+    this.totalDis = this.parser.tracks[0].distance.total / 1000.0
+    this.totalEle = this.parser.tracks[0].elevation.pos
 
     interface CombinedPoint {
       'distance': number;
@@ -675,8 +693,8 @@ struct Index {
           'orient': 'left',
           'visible': true,
           'range': {
-            'min': this.gpxParser.tracks[0].elevation.min,
-            'max': this.gpxParser.tracks[0].elevation.max
+            'min': this.parser.tracks[0].elevation.min,
+            'max': this.parser.tracks[0].elevation.max
           } as ESObject
         } as ESObject,
         {
@@ -701,8 +719,8 @@ struct Index {
   }
 
   updateDisEle(index: number) {
-    this.ele = this.gpxParser.tracks[0].segments[0][index].ele
-    this.dis = this.gpxParser.tracks[0].distance.cumul[index] / 1000.0
+    this.ele = this.parser.tracks[0].segments[0][index].ele
+    this.dis = this.parser.tracks[0].distance.cumul[index] / 1000.0
   }
 
   createCustomMarkerIcon(type: MarkType): Resource {
@@ -720,19 +738,19 @@ struct Index {
 
   // 调整地图视野，包含折线和标记
   zoomToTrackWithPadding() {
-    if (!this.mapController || this.gpxParser.tracks[0].segments[0].length === 0) {
+    if (!this.mapController || this.parser.tracks[0].segments[0].length === 0) {
       return;
     }
 
     // 计算包含所有点的边界
     let bounds: mapCommon.LatLngBounds = {
       northeast: {
-        latitude: Math.max(...this.gpxParser.tracks[0].segments[0].map(p => p.lat)),
-        longitude: Math.max(...this.gpxParser.tracks[0].segments[0].map(p => p.lon))
+        latitude: Math.max(...this.parser.tracks[0].segments[0].map(p => p.lat)),
+        longitude: Math.max(...this.parser.tracks[0].segments[0].map(p => p.lon))
       },
       southwest: {
-        latitude: Math.min(...this.gpxParser.tracks[0].segments[0].map(p => p.lat)),
-        longitude: Math.min(...this.gpxParser.tracks[0].segments[0].map(p => p.lon))
+        latitude: Math.min(...this.parser.tracks[0].segments[0].map(p => p.lat)),
+        longitude: Math.min(...this.parser.tracks[0].segments[0].map(p => p.lon))
       }
     };
 
@@ -770,14 +788,14 @@ struct Index {
   }
 
   async addWayPointMarkers() {
-    let points: Array<mapCommon.LatLng> = this.gpxParser.waypoints.map(
+    let points: Array<mapCommon.LatLng> = this.parser.waypoints.map(
       point => this.convertToLatLng(point)
     );
     for (let i = 0; i < points.length; i++) {
       let markerOptions: mapCommon.MarkerOptions = {
         position: points[i],
-        title: Index.wayPointNamePrefix + this.gpxParser.waypoints[i].name,
-        snippet: this.gpxParser.waypoints[i].desc,
+        title: Index.wayPointNamePrefix + this.parser.waypoints[i].name,
+        snippet: this.parser.waypoints[i].desc,
         icon: this.createCustomMarkerIcon(MarkType.WayPoint), // 绿色图标
         clickable: true
       };
@@ -786,8 +804,8 @@ struct Index {
   }
 
   intoStartPointChangeMode() {
-    let points = this.gpxParser.tracks[0].segments[0]
-    let startToEndDistance = GPXParser.calculateDistance(points[0].lat, points[0].lon, points[points.length - 1].lat,
+    let points = this.parser.tracks[0].segments[0]
+    let startToEndDistance = TrackUtils.calculateDistance(points[0].lat, points[0].lon, points[points.length - 1].lat,
       points[points.length - 1].lon)
     if (startToEndDistance < 100) {
       // 首尾节点距离小于100米，认为是环线轨迹
@@ -802,31 +820,29 @@ struct Index {
     }
   }
 
-  async saveGPXFile() {
+  async saveFile() {
     // 创建文件管理器选项实例。
-    let defaultName = this.getFileNameFromUrl(this.gpxFileUrl)
+    let defaultName = CommonUtils.getFileNameFromUri(this.fileUri)
     const documentSaveOptions = new picker.DocumentSaveOptions();
     documentSaveOptions.newFileNames = [defaultName];
     let context = getContext(this) as common.Context;
     const documentViewPicker = new picker.DocumentViewPicker(context);
     try {
       let uris: string[] = await documentViewPicker.save(documentSaveOptions)
-      await GPXWriter.writeGPXFile(this.gpxParser.tracks, this.gpxParser.waypoints, uris[0])
+      let suffix = CommonUtils.getFileSuffix(this.fileUri)
+      switch (suffix) {
+        case 'gpx':
+          await GPXWriter.writeGPXFile(this.parser.tracks, this.parser.waypoints, uris[0])
+          break;
+        case 'kml':
+          await KMLWriter.writeKMLFile(this.parser.tracks, this.parser.waypoints, uris[0]) // todo 根据类型
+          break;
+        case 'tcx':
+        case 'geojson':
+      }
       console.info('documentViewPicker.save to file succeed and uri is:' + uris[0]);
     } catch (err) {
       console.error(`Invoke documentViewPicker.save failed, code is ${err.code}, message is ${err.message}`);
-    }
-  }
-
-  private getFileNameFromUrl(url: string): string {
-    try {
-      // 创建 URI 对象
-      const uriObj = new uri.URI(url);
-      // 获取路径部分
-      return uriObj.getLastSegment();
-    } catch (error) {
-      console.error(`解析URI失败: ${error.message}`);
-      return '';
     }
   }
 
@@ -840,10 +856,10 @@ struct Index {
   saveSliderChange() {
     let startValue = this.sliderValue[0] / 100.0
     let endValue = this.sliderValue[1] / 100.0
-    let length = this.gpxParser.tracks[0].segments[0].length
+    let length = this.parser.tracks[0].segments[0].length
     let from = Math.round(length * startValue)
     let to = Math.round(length * endValue)
-    this.gpxParser.trimTrackPoints(this.gpxParser.tracks[0], from, to)
+    TrackUtils.trimTrackPoints(this.parser.tracks[0], from, to)
 
     this.parseLatLngPoints()
     this.parseELEPoints()
@@ -894,7 +910,7 @@ struct Index {
         latitude: Number(this.windowData.latitude)
       })
       this.waypointMarkers.push(this.tmpWaypointMarker)
-      this.gpxParser.waypoints.push(
+      this.parser.waypoints.push(
         await this.convertToWaypoint(this.windowData)
       )
       this.tmpWaypointMarker = undefined
@@ -905,11 +921,11 @@ struct Index {
       marker.setSnippet(this.windowData.des)
       marker.setPosition({ longitude: Number(this.windowData.longitude), latitude: Number(this.windowData.latitude) })
       let waypoint = await this.convertToWaypoint(this.windowData)
-      this.gpxParser.waypoints[index].name = waypoint.name
-      this.gpxParser.waypoints[index].desc = waypoint.desc
-      this.gpxParser.waypoints[index].lat = waypoint.lat
-      this.gpxParser.waypoints[index].lon = waypoint.lon
-      this.gpxParser.waypoints[index].ele = waypoint.ele
+      this.parser.waypoints[index].name = waypoint.name
+      this.parser.waypoints[index].desc = waypoint.desc
+      this.parser.waypoints[index].lat = waypoint.lat
+      this.parser.waypoints[index].lon = waypoint.lon
+      this.parser.waypoints[index].ele = waypoint.ele
     }
   }
 
@@ -917,17 +933,17 @@ struct Index {
     // 一定是对现有的兴趣点进行删除
     let index = this.waypointMarkers.indexOf(marker)
     this.waypointMarkers.splice(index, 1)
-    this.gpxParser.waypoints.splice(index, 1)
+    this.parser.waypoints.splice(index, 1)
     marker.remove()
   }
 
   onNewStartPointChange() {
     let index = this.tapMarkerIndex
-    let points = this.gpxParser.tracks[0].segments[0]
+    let points = this.parser.tracks[0].segments[0]
     const firstPart = points.slice(index, points.length - 1)
     const secondPart = points.slice(0, index - 1)
     let newPoints = [...firstPart, ...secondPart]
-    this.gpxParser.tracks[0].segments[0] = newPoints
+    this.parser.tracks[0].segments[0] = newPoints
     this.parseLatLngPoints()
     this.parseELEPoints()
   }

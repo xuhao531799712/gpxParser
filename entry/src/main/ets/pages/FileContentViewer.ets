@@ -1,8 +1,9 @@
 import fs from '@ohos.file.fs';
 import router from '@ohos.router';
 import promptAction from '@ohos.promptAction';
-import { uri, util } from '@kit.ArkTS';
+import { util } from '@kit.ArkTS';
 import { BusinessError, pasteboard } from '@kit.BasicServicesKit';
+import { CommonUtils } from '../common/utils/CommonUtils';
 
 @Entry
 @Component
@@ -25,23 +26,11 @@ struct FileContentViewer {
 
   aboutToAppear() {
     let params = (router.getParams() as Record<string, string>)
-    this.fileUri = params['fileUrl']
+    this.fileUri = params['fileUri']
     if (this.fileUri) {
       this.loadFileContent();
     } else {
       this.errorMessage = "未提供文件URI";
-    }
-  }
-
-  private getFileNameFromUrl(url: string): string {
-    try {
-      // 创建 URI 对象
-      const uriObj = new uri.URI(url);
-      // 获取路径部分
-      return uriObj.getLastSegment();
-    } catch (error) {
-      console.error(`解析URI失败: ${error.message}`);
-      return '未命名文件';
     }
   }
 
@@ -52,7 +41,7 @@ struct FileContentViewer {
       this.errorMessage = '';
 
       // 获取文件名
-      this.fileName = this.getFileNameFromUrl(this.fileUri) || '未命名文件';
+      this.fileName = CommonUtils.getFileNameFromUri(this.fileUri) || '未命名文件';
 
       // 打开文件
       const file = fs.openSync(this.fileUri, fs.OpenMode.READ_ONLY);

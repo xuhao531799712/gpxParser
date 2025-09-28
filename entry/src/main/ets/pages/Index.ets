@@ -5,6 +5,7 @@ import promptAction from '@ohos.promptAction';
 import { common } from '@kit.AbilityKit';
 import { router } from '@kit.ArkUI';
 import { uri } from '@kit.ArkTS';
+import { CommonUtils } from '../common/utils/CommonUtils';
 
 @Entry
 @Component
@@ -88,7 +89,12 @@ struct FileSelectionPage {
       GridItem() {
         // 按钮1
         this.functionButton("格式转换", "各类型\n互相转换", "#FFE0E0", () => {
-          this.showToast("上传文件功能");
+          router.pushUrl({
+            url: 'pages/FileConversion',
+            params: {
+              fileUri: this.selectedFileUri
+            }
+          }, router.RouterMode.Standard)
         })
       }
       GridItem() {
@@ -105,8 +111,7 @@ struct FileSelectionPage {
           router.pushUrl({
             url: 'pages/FileContentViewer',
             params: {
-              fileUrl: this.selectedFileUri,
-              enableMyLocation: 'false'
+              fileUri: this.selectedFileUri
             }
           }, router.RouterMode.Standard)
         })
@@ -117,7 +122,7 @@ struct FileSelectionPage {
           router.pushUrl({
             url: 'pages/BaseMap',
             params: {
-              fileUrl: this.selectedFileUri,
+              fileUri: this.selectedFileUri,
               enableMyLocation: 'false'
             }
           }, router.RouterMode.Standard)
@@ -175,7 +180,7 @@ struct FileSelectionPage {
       if (result && result.length > 0) {
         const uri = result[0];
         this.selectedFileUri = uri;
-        this.selectedFilePath = this.getFilePathFromUrl(this.selectedFileUri)
+        this.selectedFilePath = CommonUtils.getFilePathFromUri(this.selectedFileUri)
 
         // 获取文件信息
         const file = fs.openSync(uri, fs.OpenMode.READ_ONLY);
@@ -186,8 +191,7 @@ struct FileSelectionPage {
         this.fileSize = this.formatFileSize(stat.size);
 
         // 获取文件类型
-        this.fileType = this.getFileType(uri);
-        this.fileType = this.getFileType(uri);
+        this.fileType = CommonUtils.getFileType(uri);
       } else {
         console.error('DocumentViewPicker.select failed with err: no file');
         this.showErrorAlertDialog('select no file')
@@ -207,20 +211,6 @@ struct FileSelectionPage {
     return (bytes / 1073741824).toFixed(1) + " GB";
   }
 
-  // 获取文件类型
-  getFileType(filePath: string): string {
-    const extension = filePath.split('.').pop()?.toLowerCase() || '';
-
-    const fileTypes: Record<string, string> = {
-      'gpx': 'GPS 轨迹文件',
-      'kml': 'Google Earth KML 文件',
-      'tcx': 'Garmin Training Center TCX 文件',
-      'geojson': 'GeoJSON 文件'
-    };
-
-    return fileTypes[extension] || '未知文件类型';
-  }
-
   // 显示提示信息
   showToast(message: string) {
     promptAction.showToast({
@@ -228,18 +218,6 @@ struct FileSelectionPage {
       duration: 3000,
       alignment: Alignment.Center
     });
-  }
-
-  private getFilePathFromUrl(url: string): string {
-    try {
-      // 创建 URI 对象
-      const uriObj = new uri.URI(url);
-      // 获取路径部分
-      return uriObj.path;
-    } catch (error) {
-      console.error(`解析URI失败: ${error.message}`);
-      return '未命名文件';
-    }
   }
 
   build() {
