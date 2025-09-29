@@ -22,7 +22,7 @@ struct FileContentViewer {
 
   // 支持的编码列表
   private encodings: string[] = ['UTF-8', 'GBK', 'ISO-8859-1', 'UTF-16'];
-  private chunkSize: number = 50000; // 每块5万字符
+  private chunkSize: number = 100000; // 每块5万字符
 
   aboutToAppear() {
     let params = (router.getParams() as Record<string, string>)
@@ -49,10 +49,10 @@ struct FileContentViewer {
       // 获取文件大小
       const stat = fs.statSync(file.fd);
 
-      // 设置最大读取限制（1MB）
-      const maxSize = 1 * 1024 * 1024;
+      // 设置最大读取限制（150KB）
+      const maxSize = 150 * 1024;
       if (stat.size > maxSize) {
-        this.errorMessage = `文件过大 (${this.formatFileSize(stat.size)})，仅显示前5MB内容`;
+        this.errorMessage = `文件过大 (${this.formatFileSize(stat.size)})，仅显示前150KB内容`;
       }
 
       // 计算实际读取大小
@@ -71,8 +71,8 @@ struct FileContentViewer {
       // 转换编码
       this.convertBufferToText(buffer, this.encoding);
 
-      // 分块处理大文件
-      this.splitContentIntoChunks();
+      this.fileChunks = []
+      this.fileChunks.push(this.fileContent);
 
       this.isLoading = false;
     } catch (error) {
@@ -305,7 +305,7 @@ struct FileContentViewer {
         .height('100%')
         .justifyContent(FlexAlign.Center)
         .alignItems(HorizontalAlign.Center)
-      } else if (this.errorMessage) {
+      } else if (this.errorMessage.length > 0) {
         // 错误状态
         Column() {
           Image($r('app.media.icon_error'))
@@ -320,6 +320,13 @@ struct FileContentViewer {
             .margin({ bottom: 10 })
 
           if (this.errorMessage.includes('文件过大')) {
+            Button("确认")
+              .width(200)
+              .height(40)
+              .onClick(() => {
+                this.errorMessage = '';
+              })
+              .margin({ bottom: 10 })
             Button("加载完整内容")
               .width(200)
               .height(40)
@@ -372,7 +379,7 @@ struct FileContentViewer {
       this.errorMessage = '';
 
       const file = fs.openSync(this.fileUri, fs.OpenMode.READ_ONLY);
-      const stat = fs.statSync(this.fileUri);
+      const stat = fs.statSync(file.fd);
 
       const buffer = new ArrayBuffer(stat.size);
       const readResult = fs.readSync(file.fd, buffer, {
@@ -382,6 +389,7 @@ struct FileContentViewer {
 
       fs.closeSync(file);
       this.convertBufferToText(buffer, this.encoding);
+      this.splitContentIntoChunks();
       this.isLoading = false;
     } catch (error) {
       console.error(`完整文件读取失败: ${(error as BusinessError).message}`);
