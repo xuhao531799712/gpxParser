@@ -234,155 +234,171 @@ struct Index {
   }
 
   build() {
-    Stack({ alignContent: Alignment.TopEnd }) {
-      Column() {
-        Stack({ alignContent: Alignment.Bottom }) {
-          // 构造MapComponent
-          MapComponent({
-            mapOptions: this.mapOption,
-            mapCallback: this.callback,
-            customInfoWindow: (markerDelegate: map.MarkerDelegate) => {
-              this.customInfoWindowBuilder(markerDelegate)
-            }
-          })
-            .width($r('app.string.full_page'))
-            .height($r('app.string.map_ratio'))
-          Column() {
-            if (this.editMode == EditMode.Trim) {
-              Column() {
-                Row() {
-                  Button("取消", { type: ButtonType.Normal })
-                    .width('15%')
-                    .onClick(() => {
-                      this.editMode = EditMode.None
-                      this.recoverStartEndMarkers()
-                    })
-
-                  UISlider({
-                    value: [0, 100],
-                    style: SliderStyle.OutSet,
-                    showTip: true,
-                    onChange: (value) => {
-                      if (Array.isArray(value)) {
-                        this.moveStartEndMarkers(value)
-                      }
-                    },
-                  })
-                    .width('65%')
-
-                  Button("确认", { type: ButtonType.Normal })
-                    .width('15%')
-                    .onClick(() => {
-                      this.saveSliderChange()
-                      this.editMode == EditMode.None
-                    })
-                }
-                .backgroundColor(Color.White)
-                .width('100%')
-                .justifyContent(FlexAlign.SpaceBetween)
-
-                Divider()
+    Stack({ alignContent: Alignment.TopStart }) {
+      Stack({ alignContent: Alignment.TopEnd }) {
+        Column() {
+          Stack({ alignContent: Alignment.Bottom }) {
+            // 构造MapComponent
+            MapComponent({
+              mapOptions: this.mapOption,
+              mapCallback: this.callback,
+              customInfoWindow: (markerDelegate: map.MarkerDelegate) => {
+                this.customInfoWindowBuilder(markerDelegate)
               }
-            }
-            PromptBar({ text: this.promptText })
-          }
-        }
-
-        ELEChart({
-          spec: this.spec,
-          chartWidth: this.getScreenWidth(),
-          chartHeight: this.getScreenHeight() * 0.15,
-          onReady: () => {
-            this.parseELEPoints()
-          },
-          onTap: async (index) => {
-            this.updateDisEle(index)
-            await this.addTapMarker(index)
-          },
-          dis: this.dis,
-          ele: this.ele,
-          totalDis: this.totalDis,
-          totalEle: this.totalEle
-        })
-      }
-
-      Column() { // todo: 添加返回按钮
-        Button() {
-          Text('导出')
-            .fontSize(15)
-            .fontColor(Color.White)
-            .fontWeight(FontWeight.Bold)
-        }
-        .width(60) // 宽度
-        .height(30) // 高度
-        .backgroundColor(Color.Red) // 红色背景
-        .type(ButtonType.ROUNDED_RECTANGLE)
-        .borderRadius(10) // 圆角半径
-        .margin({ top: 8, right: 16 })
-        .onClick(async () => {
-          await this.saveFile()
-        })
-
-        IconButton({ image: $r("app.media.icon_reverse"), text: '方向逆转' })
-          .margin({ top: 12, right: 16 })
-          .onClick(() => {
-            TrackUtils.revertTrackPoints(this.parser.tracks[0])
-            this.parseLatLngPoints()
-            this.parseELEPoints()
-            promptAction.showToast({
-              message: $r('app.string.reverse_complete_toast'),
-              duration: 4000
             })
-          })
+              .width($r('app.string.full_page'))
+              .height($r('app.string.map_ratio'))
+            Column() {
+              if (this.editMode == EditMode.Trim) {
+                Column() {
+                  Row() {
+                    Button("取消", { type: ButtonType.Normal })
+                      .width('15%')
+                      .onClick(() => {
+                        this.editMode = EditMode.None
+                        this.recoverStartEndMarkers()
+                      })
 
+                    UISlider({
+                      value: [0, 100],
+                      style: SliderStyle.OutSet,
+                      showTip: true,
+                      onChange: (value) => {
+                        if (Array.isArray(value)) {
+                          this.moveStartEndMarkers(value)
+                        }
+                      },
+                    })
+                      .width('65%')
 
-        IconButton({ image: $r("app.media.icon_cut"), text: '轨迹裁剪', selected: this.editMode == EditMode.Trim })
-          .margin({ top: 6, right: 16 })
-          .onClick(() => {
-            if (this.editMode == EditMode.Trim) {
-              this.editMode = EditMode.None
-            } else {
-              this.editMode = EditMode.Trim
+                    Button("确认", { type: ButtonType.Normal })
+                      .width('15%')
+                      .onClick(() => {
+                        this.saveSliderChange()
+                        this.editMode == EditMode.None
+                      })
+                  }
+                  .backgroundColor(Color.White)
+                  .width('100%')
+                  .justifyContent(FlexAlign.SpaceBetween)
+
+                  Divider()
+                }
+              }
+              PromptBar({ text: this.promptText })
             }
-            // todo: 同时禁止其他编辑功能使用
+          }
+
+          ELEChart({
+            spec: this.spec,
+            chartWidth: this.getScreenWidth(),
+            chartHeight: this.getScreenHeight() * 0.15,
+            onReady: () => {
+              this.parseELEPoints()
+            },
+            onTap: async (index) => {
+              this.updateDisEle(index)
+              await this.addTapMarker(index)
+            },
+            dis: this.dis,
+            ele: this.ele,
+            totalDis: this.totalDis,
+            totalEle: this.totalEle
+          })
+        }
+
+        Column() {
+          Button() {
+            Text('导出')
+              .fontSize(15)
+              .fontColor(Color.White)
+              .fontWeight(FontWeight.Bold)
+          }
+          .width(60) // 宽度
+          .height(30) // 高度
+          .backgroundColor(Color.Red) // 红色背景
+          .type(ButtonType.ROUNDED_RECTANGLE)
+          .borderRadius(10) // 圆角半径
+          .margin({ top: 8, right: 16 })
+          .onClick(async () => {
+            await this.saveFile()
           })
 
-        if (this.enableWayPointEdit) {
+          IconButton({ image: $r("app.media.icon_reverse"), text: '方向逆转' })
+            .margin({ top: 12, right: 16 })
+            .onClick(() => {
+              TrackUtils.revertTrackPoints(this.parser.tracks[0])
+              this.parseLatLngPoints()
+              this.parseELEPoints()
+              promptAction.showToast({
+                message: $r('app.string.reverse_complete_toast'),
+                duration: 4000
+              })
+            })
+
+
+          IconButton({ image: $r("app.media.icon_cut"), text: '轨迹裁剪', selected: this.editMode == EditMode.Trim })
+            .margin({ top: 6, right: 16 })
+            .onClick(() => {
+              if (this.editMode == EditMode.Trim) {
+                this.editMode = EditMode.None
+              } else {
+                this.editMode = EditMode.Trim
+              }
+              // todo: 同时禁止其他编辑功能使用
+            })
+
+          if (this.enableWayPointEdit) {
+            IconButton({
+              image: $r("app.media.icon_marker_home"),
+              text: '标记编辑',
+              selected: this.editMode == EditMode.MarkPoint
+            })
+              .margin({ top: 6, right: 16 })
+              .onClick(async () => {
+                if (this.editMode == EditMode.MarkPoint) {
+                  this.editMode = EditMode.None
+                  this.clearWayPointMarkers()
+                } else {
+                  this.editMode = EditMode.MarkPoint
+                  await this.addWayPointMarkers()
+                }
+              })
+          }
+
           IconButton({
-            image: $r("app.media.icon_marker_home"),
-            text: '标记编辑',
-            selected: this.editMode == EditMode.MarkPoint
+            image: $r("app.media.icon_start_change"),
+            text: '起点调整',
+            selected: this.editMode == EditMode.StartPoint
           })
             .margin({ top: 6, right: 16 })
-            .onClick(async () => {
-              if (this.editMode == EditMode.MarkPoint) {
+            .onClick(() => {
+              if (this.editMode == EditMode.StartPoint) {
                 this.editMode = EditMode.None
-                this.clearWayPointMarkers()
+                this.tapMarker?.setClickable(false)
               } else {
-                this.editMode = EditMode.MarkPoint
-                await this.addWayPointMarkers()
+                this.intoStartPointChangeMode()
               }
             })
         }
+      }
+      .width($r('app.string.full_page'))
+      .height($r('app.string.full_page'))
 
-        IconButton({
-          image: $r("app.media.icon_start_change"),
-          text: '起点调整',
-          selected: this.editMode == EditMode.StartPoint
-        })
-          .margin({ top: 6, right: 16 })
+      Row() {
+        Button("返回")
+          .width(60)
+          .height(30)
+          .fontSize(14)
+          .type(ButtonType.ROUNDED_RECTANGLE)
+          .borderRadius(10) // 圆角半径
+          .fontWeight(FontWeight.Bold)
+          .margin({ top: 8, left: 8 })
           .onClick(() => {
-            if (this.editMode == EditMode.StartPoint) {
-              this.editMode = EditMode.None
-              this.tapMarker?.setClickable(false)
-            } else {
-              this.intoStartPointChangeMode()
-            }
+            router.back();
           })
       }
     }
-    .width($r('app.string.full_page'))
-    .height($r('app.string.full_page'))
   }
 
   async aboutToAppear(): Promise<void> {
