@@ -177,7 +177,7 @@ struct FileConversionPage {
             .fontWeight(FontWeight.Medium)
             .layoutWeight(1)
             .maxLines(1)
-            .textOverflow({ overflow: TextOverflow.Ellipsis })
+            .textOverflow({ overflow: TextOverflow.MARQUEE })
         }
         .margin({ bottom: 13 })
 

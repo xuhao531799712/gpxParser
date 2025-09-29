@@ -3,8 +3,8 @@
     "pages/Test",
     "pages/BaseMap",
     "pages/ELEChart",
-    "pages/Index",
     "pages/FileContentViewer",
-    "pages/FileConversion"
+    "pages/FileConversion",
+    "pages/Home"
   ]
 }
