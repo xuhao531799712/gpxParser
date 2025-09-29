@@ -74,6 +74,7 @@ struct Index {
   @State ele: number = 0 // 单位m
   @State totalDis: number = 0
   @State totalEle: number = 0
+  @State totalDown: number = 0
   @State promptText: string = ''
   @State enableWayPointEdit: boolean = true
   @State enableEdit: boolean = true
@@ -304,7 +305,8 @@ struct Index {
             dis: this.dis,
             ele: this.ele,
             totalDis: this.totalDis,
-            totalEle: this.totalEle
+            totalEle: this.totalEle,
+            totalDown: this.totalDown
           })
         }
 
@@ -645,6 +647,7 @@ struct Index {
 
     this.totalDis = this.parser.tracks[0].distance.total / 1000.0
     this.totalEle = this.parser.tracks[0].elevation.pos
+    this.totalDown = this.parser.tracks[0].elevation.neg
 
     interface CombinedPoint {
       'distance': number;

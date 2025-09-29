@@ -21,6 +21,7 @@ export struct ELEChart {
   @Prop ele: number = 0
   @Prop totalDis: number = 0
   @Prop totalEle: number = 0
+  @Prop totalDown: number = 0
 
   @Prop spec:Record<string, string|ESObject> = {
     'type': 'area',
@@ -32,7 +33,7 @@ export struct ELEChart {
   build() {
     Row() {
       Column() {
-        ChartHeader({dis: this.dis, ele: this.ele, totalDis: this.totalDis, totalEle: this.totalEle})
+        ChartHeader({dis: this.dis, ele: this.ele, totalDis: this.totalDis, totalEle: this.totalEle, totalDown: this.totalDown})
 
         VChart({
           spec: this.spec,
@@ -67,6 +68,7 @@ struct ChartHeader {
   @Prop ele: number = 0
   @Prop totalDis: number = 0
   @Prop totalEle: number = 0
+  @Prop totalDown: number = 0
 
   build() {
     Row() {
@@ -79,7 +81,7 @@ struct ChartHeader {
           .fontSize(12)
           .fontColor(Color.Red)
       }
-      .margin({ right: 20 })
+      .margin({ right: 15 })
 
       Column() {
         Text('总爬升')
@@ -89,7 +91,17 @@ struct ChartHeader {
           .fontSize(12)
           .fontColor(Color.Red)
       }
-      .margin({ right: 20 })
+      .margin({ right: 15 })
+
+      Column() {
+        Text('总下降')
+          .fontSize(12)
+          .fontColor(Color.Gray)
+        Text(this.totalDown.toFixed(2) + 'm')
+          .fontSize(12)
+          .fontColor(Color.Red)
+      }
+      .margin({ right: 15 })
 
       Column() {
         Text('累计距离')
@@ -99,7 +111,7 @@ struct ChartHeader {
           .fontSize(12)
           .fontColor(Color.Red)
       }
-      .margin({ right: 20 })
+      .margin({ right: 15 })
 
       Column() {
         Text('当前海拔')
@@ -109,7 +121,7 @@ struct ChartHeader {
           .fontSize(12)
           .fontColor(Color.Blue)
       }
-      .margin({ right: 20 })
+      .margin({ right: 15 })
     }
     .justifyContent(FlexAlign.SpaceAround)
     .width('100%')
