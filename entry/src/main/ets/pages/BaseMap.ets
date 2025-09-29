@@ -76,6 +76,7 @@ struct Index {
   @State totalEle: number = 0
   @State promptText: string = ''
   @State enableWayPointEdit: boolean = true
+  @State enableEdit: boolean = true
   @State @Watch('onEditModeChange') editMode: EditMode = EditMode.None
 
   // 自定义信息窗Builder
@@ -307,79 +308,82 @@ struct Index {
           })
         }
 
-        Column() {
-          Button() {
-            Text('导出')
-              .fontSize(15)
-              .fontColor(Color.White)
-              .fontWeight(FontWeight.Bold)
-          }
-          .width(60) // 宽度
-          .height(30) // 高度
-          .backgroundColor(Color.Red) // 红色背景
-          .type(ButtonType.ROUNDED_RECTANGLE)
-          .borderRadius(10) // 圆角半径
-          .margin({ top: 8, right: 16 })
-          .onClick(async () => {
-            await this.saveFile()
-          })
+        if (this.enableEdit) {
+          Column() {
+            // 编辑菜单
+            Button() {
+              Text('导出')
+                .fontSize(15)
+                .fontColor(Color.White)
+                .fontWeight(FontWeight.Bold)
+            }
+            .width(60) // 宽度
+            .height(30) // 高度
+            .backgroundColor(Color.Red) // 红色背景
+            .type(ButtonType.ROUNDED_RECTANGLE)
+            .borderRadius(10) // 圆角半径
+            .margin({ top: 8, right: 16 })
+            .onClick(async () => {
+              await this.saveFile()
+            })
 
-          IconButton({ image: $r("app.media.icon_reverse"), text: '方向逆转' })
-            .margin({ top: 12, right: 16 })
-            .onClick(() => {
-              TrackUtils.revertTrackPoints(this.parser.tracks[0])
-              this.parseLatLngPoints()
-              this.parseELEPoints()
-              promptAction.showToast({
-                message: $r('app.string.reverse_complete_toast'),
-                duration: 4000
+            IconButton({ image: $r("app.media.icon_reverse"), text: '方向逆转' })
+              .margin({ top: 12, right: 16 })
+              .onClick(() => {
+                TrackUtils.revertTrackPoints(this.parser.tracks[0])
+                this.parseLatLngPoints()
+                this.parseELEPoints()
+                promptAction.showToast({
+                  message: $r('app.string.reverse_complete_toast'),
+                  duration: 4000
+                })
               })
-            })
 
 
-          IconButton({ image: $r("app.media.icon_cut"), text: '轨迹裁剪', selected: this.editMode == EditMode.Trim })
-            .margin({ top: 6, right: 16 })
-            .onClick(() => {
-              if (this.editMode == EditMode.Trim) {
-                this.editMode = EditMode.None
-              } else {
-                this.editMode = EditMode.Trim
-              }
-              // todo: 同时禁止其他编辑功能使用
-            })
+            IconButton({ image: $r("app.media.icon_cut"), text: '轨迹裁剪', selected: this.editMode == EditMode.Trim })
+              .margin({ top: 6, right: 16 })
+              .onClick(() => {
+                if (this.editMode == EditMode.Trim) {
+                  this.editMode = EditMode.None
+                } else {
+                  this.editMode = EditMode.Trim
+                }
+                // todo: 同时禁止其他编辑功能使用
+              })
 
-          if (this.enableWayPointEdit) {
+            if (this.enableWayPointEdit) {
+              IconButton({
+                image: $r("app.media.icon_marker_home"),
+                text: '标记编辑',
+                selected: this.editMode == EditMode.MarkPoint
+              })
+                .margin({ top: 6, right: 16 })
+                .onClick(async () => {
+                  if (this.editMode == EditMode.MarkPoint) {
+                    this.editMode = EditMode.None
+                    this.clearWayPointMarkers()
+                  } else {
+                    this.editMode = EditMode.MarkPoint
+                    await this.addWayPointMarkers()
+                  }
+                })
+            }
+
             IconButton({
-              image: $r("app.media.icon_marker_home"),
-              text: '标记编辑',
-              selected: this.editMode == EditMode.MarkPoint
+              image: $r("app.media.icon_start_change"),
+              text: '起点调整',
+              selected: this.editMode == EditMode.StartPoint
             })
               .margin({ top: 6, right: 16 })
-              .onClick(async () => {
-                if (this.editMode == EditMode.MarkPoint) {
+              .onClick(() => {
+                if (this.editMode == EditMode.StartPoint) {
                   this.editMode = EditMode.None
-                  this.clearWayPointMarkers()
+                  this.tapMarker?.setClickable(false)
                 } else {
-                  this.editMode = EditMode.MarkPoint
-                  await this.addWayPointMarkers()
+                  this.intoStartPointChangeMode()
                 }
               })
           }
-
-          IconButton({
-            image: $r("app.media.icon_start_change"),
-            text: '起点调整',
-            selected: this.editMode == EditMode.StartPoint
-          })
-            .margin({ top: 6, right: 16 })
-            .onClick(() => {
-              if (this.editMode == EditMode.StartPoint) {
-                this.editMode = EditMode.None
-                this.tapMarker?.setClickable(false)
-              } else {
-                this.intoStartPointChangeMode()
-              }
-            })
         }
       }
       .width($r('app.string.full_page'))
@@ -405,6 +409,7 @@ struct Index {
     let params = (router.getParams() as Record<string, string>)
     this.fileUri = params['fileUri']
     this.enableMyLocation = (params['enableMyLocation'] == 'true')
+    this.enableEdit = (params['enableEdit'] == 'true')
     this.mapOption = {
       position: {
         target: {

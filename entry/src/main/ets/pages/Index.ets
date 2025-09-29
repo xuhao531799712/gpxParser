@@ -100,7 +100,14 @@ struct FileSelectionPage {
       GridItem() {
         // 按钮2
         this.functionButton("轨迹预览", "在地图中展示轨迹\n距离海拔等", "#E0FFE0", () => {
-          this.showToast("分享文件功能");
+          router.pushUrl({
+            url: 'pages/BaseMap',
+            params: {
+              fileUri: this.selectedFileUri,
+              enableMyLocation: 'false',
+              enableEdit: 'false'
+            }
+          }, router.RouterMode.Standard)
         })
       }
 
@@ -123,7 +130,8 @@ struct FileSelectionPage {
             url: 'pages/BaseMap',
             params: {
               fileUri: this.selectedFileUri,
-              enableMyLocation: 'false'
+              enableMyLocation: 'false',
+              enableEdit: 'true'
             }
           }, router.RouterMode.Standard)
         })
