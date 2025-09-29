@@ -173,6 +173,7 @@ struct FileSelectionPage {
     try {
       const documentSelectOptions = new picker.DocumentSelectOptions();
       documentSelectOptions.fileSuffixFilters = ['.gpx', 'kml', 'tcx','geojson']
+      documentSelectOptions.maxSelectNumber = 1
       let context = getContext(this) as common.Context;
       const documentPicker = new picker.DocumentViewPicker(context);
       const result = await documentPicker.select(documentSelectOptions)

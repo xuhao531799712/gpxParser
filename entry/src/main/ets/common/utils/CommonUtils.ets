@@ -1,4 +1,9 @@
 import { uri } from "@kit.ArkTS";
+import { GeoJSONParser } from "../roadFileUtils/geoJSON/GeoJSONParser";
+import GPXParser from "../roadFileUtils/gpx/GPXParser";
+import KMLParser from "../roadFileUtils/kml/KMLParser";
+import { Parser } from "../roadFileUtils/RoadTypes";
+import TCXParser from "../roadFileUtils/tcx/TCXParser";
 
 
 export class CommonUtils {
@@ -49,4 +54,16 @@ export class CommonUtils {
     'geojson': 'GeoJSON 文件'
   };
 
+  static createParser(suffix: string): Parser {
+    switch (suffix) {
+      case 'gpx':
+        return new GPXParser()
+      case 'kml':
+        return new KMLParser()
+      case 'tcx':
+        return new TCXParser()
+      default:
+        return new GeoJSONParser()
+    }
+  }
 }

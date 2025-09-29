@@ -73,5 +73,5 @@ export interface Parser {
   waypoints: Waypoint[];
   tracks: Track[];
   routes: Route[];
-  parse(gpxString: string, completeCallback:(error?: Error)=>void): void;
+  parse(contentString: string, completeCallback:(error?: Error)=>void): void;
 }

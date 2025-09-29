@@ -469,21 +469,10 @@ struct Index {
 
   createParser() {
     let suffix = CommonUtils.getFileSuffix(this.fileUri)
-    switch (suffix) {
-      case 'gpx':
-        this.parser = new GPXParser()
-        break;
-      case 'kml':
-        this.parser = new KMLParser()
-        break;
-      case 'tcx':
-        this.enableWayPointEdit = false
-        this.parser = new TCXParser()
-        break;
-      case 'geojson':
-        this.parser = new GeoJSONParser()
-        break;
+    if (suffix == 'tcx') {
+      this.enableWayPointEdit = false
     }
+    this.parser = CommonUtils.createParser(suffix)
   }
 
   checkPermissions(): boolean {

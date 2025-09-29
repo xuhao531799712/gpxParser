@@ -7,6 +7,7 @@ import { common } from '@kit.AbilityKit';
 import { CommonUtils } from '../common/utils/CommonUtils';
 import fileIo from '@ohos.file.fs';
 import { buffer } from '@kit.ArkTS';
+import { fileManagerService } from '@kit.FileManagerServiceKit';
 
 // 文件转换选项
 interface ConversionOption {
@@ -15,7 +16,7 @@ interface ConversionOption {
 }
 
 // 转换任务
-function convertFile(sourcePath: string, targetPath: string, format: string): boolean {
+async function convertFile(sourcePath: string, targetPath: string, targetFormat: string): Promise<boolean> {
   let success = false;
 
   try {
@@ -28,14 +29,14 @@ function convertFile(sourcePath: string, targetPath: string, format: string): bo
     fileIo.closeSync(sourceFile);
 
     // 转换逻辑（同步）
-    const convertedContent = Converter.convertContent(content, format);
-
-    // 同步写入目标文件
-    const targetFile = fileIo.openSync(targetPath, fileIo.OpenMode.CREATE | fileIo.OpenMode.READ_WRITE);
-    fileIo.writeSync(targetFile.fd, convertedContent);
-    fileIo.closeSync(targetFile);
-
-    success = true;
+    let sourceFormat = CommonUtils.getFileSuffix(sourcePath)
+    const error = await Converter.convertContent(content, sourceFormat, targetFormat, targetPath);
+    if (error != null) {
+      console.error(`转换失败: ${error}`);
+      success = false;
+    } else {
+      success = true;
+    }
   } catch (error) {
     console.error(`转换失败: ${error}`);
     success = false;
@@ -134,7 +135,7 @@ struct FileConversionPage {
       this.conversionCompleted = false;
 
       // 在后台执行转换任务
-      let success = convertFile(this.fileUri, this.outputPath, this.selectedFormat);
+      let success = await convertFile(this.fileUri, this.outputPath, this.selectedFormat);
 
       this.conversionProgress = 100;
 
@@ -142,6 +143,7 @@ struct FileConversionPage {
         this.conversionCompleted = true;
         promptAction.showToast({ message: "转换完成", duration: 2000 });
       } else {
+        fileIo.unlink(this.outputPath)
         promptAction.showToast({ message: "转换失败", duration: 2000 });
       }
 
@@ -150,6 +152,7 @@ struct FileConversionPage {
       console.error(`转换失败: ${(error as BusinessError).message}`);
       promptAction.showToast({ message: "转换过程中出错", duration: 2000 });
       this.isConverting = false;
+      fileIo.unlink(this.outputPath)
     }
   }
 
@@ -160,7 +163,7 @@ struct FileConversionPage {
       Text("文件信息")
         .fontSize(24)
         .fontWeight(FontWeight.Bold)
-        .margin({ bottom: 20 })
+        .margin({ bottom: 15 })
 
       // 文件信息卡片
       Column() {
@@ -168,7 +171,7 @@ struct FileConversionPage {
           Text("文件名:")
             .fontSize(18)
             .fontColor('#666666')
-            .width(100)
+            .width(80)
           Text(this.fileName)
             .fontSize(18)
             .fontWeight(FontWeight.Medium)
@@ -176,23 +179,24 @@ struct FileConversionPage {
             .maxLines(1)
             .textOverflow({ overflow: TextOverflow.Ellipsis })
         }
-        .margin({ bottom: 15 })
+        .margin({ bottom: 13 })
 
         Row() {
           Text("类型:")
             .fontSize(18)
             .fontColor('#666666')
-            .width(100)
+            .width(80)
           Text(this.fileType)
             .fontSize(18)
+            .margin({right: 65})
         }
-        .margin({ bottom: 15 })
+        .margin({ bottom: 13 })
 
         Row() {
           Text("大小:")
             .fontSize(18)
             .fontColor('#666666')
-            .width(100)
+            .width(80)
           Text(this.fileSize)
             .fontSize(18)
         }
@@ -215,7 +219,7 @@ struct FileConversionPage {
       Text("转换格式")
         .fontSize(24)
         .fontWeight(FontWeight.Bold)
-        .margin({ bottom: 20 })
+        .margin({ bottom: 15 })
 
       // 格式选择卡片
       Column() {
@@ -233,7 +237,7 @@ struct FileConversionPage {
                 .fontSize(18)
                 .margin({right: 25})
             }
-            .margin({ bottom: 15 })
+            .margin({ bottom: 13 })
             .width('100%')
             .justifyContent(FlexAlign.Start)
           }
@@ -263,14 +267,14 @@ struct FileConversionPage {
         .onClick(() => {
           if (!this.isConverting) this.startConversion();
         })
-        .margin({ bottom: 20 })
+        .margin({ bottom: 15 })
 
       // 转换进度
       if (this.isConverting) {
         Progress({ value: this.conversionProgress, style: ProgressStyle.Linear })
           .width('80%')
           .height(10)
-          .margin({ bottom: 10 })
+          .margin({ bottom: 8 })
 
         Text(`${this.conversionProgress}%`)
           .fontSize(16)
@@ -283,13 +287,13 @@ struct FileConversionPage {
           Image($r('app.media.icon_success'))
             .width(60)
             .height(60)
-            .margin({ bottom: 15 })
+            .margin({ bottom: 13 })
 
           Text("转换完成!")
             .fontSize(24)
             .fontWeight(FontWeight.Bold)
             .fontColor('#4CAF50')
-            .margin({ bottom: 10 })
+            .margin({ bottom: 8 })
 
           Text(`文件已保存至: ${this.outputPath}`)
             .fontSize(16)
@@ -297,7 +301,7 @@ struct FileConversionPage {
             .textAlign(TextAlign.Center)
             .maxLines(2)
             .textOverflow({ overflow: TextOverflow.Ellipsis })
-            .margin({ bottom: 20 })
+            .margin({ bottom: 15 })
 
           Button("打开文件")
             .width(150)
